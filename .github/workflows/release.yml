@@ -50,7 +50,10 @@ jobs:
         id: nuget-login
         continue-on-error: true
         with:
-          user: webscraping-ai
+          # nuget.org account that owns the Trusted Publisher policy.
+          # NuGet has no concept of orgs — this is an individual account
+          # (case-sensitive, matches the username shown on nuget.org).
+          user: WebScrapingAI
 
       - name: Publish (OIDC)
         if: steps.nuget-login.outcome == 'success'
