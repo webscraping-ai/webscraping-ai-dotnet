@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, .NET ${{ matrix.dotnet }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        dotnet: ["8.0.x", "10.0.x"]
+        include:
+          # Cross-OS smoke check on a single SDK; full matrix lives on Linux.
+          - os: macos-latest
+            dotnet: "10.0.x"
+          - os: windows-latest
+            dotnet: "10.0.x"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+      - name: Test
+        run: dotnet test --no-build --configuration Release --logger "console;verbosity=normal"
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore
+        run: dotnet restore
+      - name: Verify formatting
+        run: dotnet format --no-restore --verify-no-changes --severity warn
+
+  release-tag-check:
+    # Verifies that a v* tag matches the <Version> in the .csproj and
+    # SdkVersion.Value. Fires only on tag push; doesn't run on PRs.
+    name: release-tag-check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare tag against project version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF##refs/tags/v}"
+          csproj_version=$(grep -oE '<Version>[^<]+</Version>' src/WebScrapingAI/WebScrapingAI.csproj | head -1 | sed -E 's/<\/?Version>//g')
+          sdk_version=$(grep -oE 'Value = "[^"]+"' src/WebScrapingAI/Version.cs | sed -E 's/.*= "//;s/"$//')
+          echo "tag=$tag"
+          echo "csproj=$csproj_version"
+          echo "sdk=$sdk_version"
+          if [[ "$tag" != "$csproj_version" ]]; then
+            echo "::error::Tag v$tag does not match <Version>$csproj_version</Version>"
+            exit 1
+          fi
+          if [[ "$tag" != "$sdk_version" ]]; then
+            echo "::error::Tag v$tag does not match SdkVersion.Value=$sdk_version"
+            exit 1
+          fi

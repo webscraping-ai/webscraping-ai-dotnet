@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write  # required for NuGet OIDC trusted publishing
+
+jobs:
+  publish:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    environment: nuget
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Verify tag matches version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF##refs/tags/v}"
+          csproj_version=$(grep -oE '<Version>[^<]+</Version>' src/WebScrapingAI/WebScrapingAI.csproj | head -1 | sed -E 's/<\/?Version>//g')
+          sdk_version=$(grep -oE 'Value = "[^"]+"' src/WebScrapingAI/Version.cs | sed -E 's/.*= "//;s/"$//')
+          test "$tag" = "$csproj_version" || { echo "tag/csproj mismatch"; exit 1; }
+          test "$tag" = "$sdk_version" || { echo "tag/SdkVersion.Value mismatch"; exit 1; }
+          echo "verified version=$tag"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack src/WebScrapingAI/WebScrapingAI.csproj --no-build --configuration Release --output ./artifacts
+
+      # NuGet trusted publishing via GitHub OIDC. Requires a Trusted Publisher
+      # on the package side (nuget.org → manage package → Trusted Publishers).
+      # Falls back to NUGET_API_KEY secret if OIDC fails.
+      - name: Login to NuGet (OIDC)
+        uses: NuGet/login@v1
+        id: nuget-login
+        continue-on-error: true
+        with:
+          user: webscraping-ai
+
+      - name: Publish (OIDC)
+        if: steps.nuget-login.outcome == 'success'
+        run: |
+          dotnet nuget push './artifacts/*.nupkg' \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+      - name: Publish (fallback API key)
+        if: steps.nuget-login.outcome != 'success'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::NuGet OIDC login failed and NUGET_API_KEY secret is not set."
+            exit 1
+          fi
+          dotnet nuget push './artifacts/*.nupkg' \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
