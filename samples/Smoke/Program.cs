@@ -26,31 +26,31 @@ internal static class Program
 
         var failed = 0;
 
-        await Step("account", async () =>
+        failed += await Step("account", async () =>
         {
             var info = await client.AccountAsync();
             return $"email={info.Email} remaining={info.RemainingApiCalls}";
-        }, ref failed);
+        });
 
-        await Step("html", async () =>
+        failed += await Step("html", async () =>
         {
             var html = await client.HtmlAsync(new HtmlRequest { Url = TargetUrl });
             return Preview(html);
-        }, ref failed);
+        });
 
-        await Step("text", async () =>
+        failed += await Step("text", async () =>
         {
             var text = await client.TextAsync(new TextRequest { Url = TargetUrl, TextFormat = "plain" });
             return Preview(text);
-        }, ref failed);
+        });
 
-        await Step("selected", async () =>
+        failed += await Step("selected", async () =>
         {
             var sel = await client.SelectedAsync(new SelectedRequest { Url = TargetUrl, Selector = "h1" });
             return Preview(sel);
-        }, ref failed);
+        });
 
-        await Step("selected_multiple", async () =>
+        failed += await Step("selected_multiple", async () =>
         {
             var result = await client.SelectedMultipleAsync(new SelectedMultipleRequest
             {
@@ -58,9 +58,9 @@ internal static class Program
                 Selectors = new[] { "h1", "p" },
             });
             return $"{result.Results.Count} group(s)";
-        }, ref failed);
+        });
 
-        await Step("question", async () =>
+        failed += await Step("question", async () =>
         {
             var answer = await client.QuestionAsync(new QuestionRequest
             {
@@ -68,9 +68,9 @@ internal static class Program
                 Question = "What is this page about?",
             });
             return Preview(answer);
-        }, ref failed);
+        });
 
-        await Step("fields", async () =>
+        failed += await Step("fields", async () =>
         {
             var fields = await client.FieldsAsync(new FieldsRequest
             {
@@ -82,24 +82,26 @@ internal static class Program
                 },
             });
             return fields.Result is null ? "(no result)" : string.Join(", ", FormatFields(fields.Result));
-        }, ref failed);
+        });
 
         Console.WriteLine();
         Console.WriteLine(failed == 0 ? "All 7 endpoints OK." : $"{failed} endpoint(s) failed.");
         return failed == 0 ? 0 : 1;
     }
 
-    private static async Task Step(string name, Func<Task<string>> action, ref int failed)
+    /// <summary>Returns 0 on success, 1 on failure — caller sums into the failure count.</summary>
+    private static async Task<int> Step(string name, Func<Task<string>> action)
     {
         try
         {
             var info = await action();
             Console.WriteLine($"ok   {name,-20} {info}");
+            return 0;
         }
         catch (Exception ex)
         {
-            failed++;
             Console.WriteLine($"fail {name,-20} {ex.GetType().Name}: {ex.Message}");
+            return 1;
         }
     }
 
