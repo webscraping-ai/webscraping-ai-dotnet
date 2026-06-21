@@ -57,7 +57,7 @@ public class ClientEndpointTests
     }
 
     [Fact]
-    public async Task SelectedAsync_requires_selector_and_sends_it()
+    public async Task SelectedAsync_sends_selector_when_present()
     {
         var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, "<h1>x</h1>"));
         await client.SelectedAsync(new SelectedRequest { Url = "https://example.com", Selector = "h1" });

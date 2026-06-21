@@ -99,10 +99,10 @@ public sealed class WebScrapingAIClient : IDisposable
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         Require(request.Url, nameof(request.Url));
-        Require(request.Selector, nameof(request.Selector));
         var q = CommonParams(request)
-            .Set("url", request.Url)
-            .Set("selector", request.Selector);
+            .Set("url", request.Url);
+        // selector is optional per the API: omitting it returns whole-page HTML.
+        if (!string.IsNullOrEmpty(request.Selector)) q.Set("selector", request.Selector);
         if (!string.IsNullOrEmpty(request.Format)) q.Set("format", request.Format);
         return RequestStringAsync("/selected", q, cancellationToken);
     }
@@ -112,13 +112,10 @@ public sealed class WebScrapingAIClient : IDisposable
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         Require(request.Url, nameof(request.Url));
-        if (request.Selectors is null || request.Selectors.Count == 0)
-        {
-            throw new ArgumentException($"{nameof(request.Selectors)} must contain at least one selector", nameof(request));
-        }
         var q = CommonParams(request)
-            .Set("url", request.Url)
-            .Set("selectors", request.Selectors);
+            .Set("url", request.Url);
+        // selectors are optional per the API: omitting them returns whole-page HTML.
+        if (request.Selectors is { Count: > 0 }) q.Set("selectors", request.Selectors);
 
         var body = await RequestStringAsync("/selected-multiple", q, cancellationToken).ConfigureAwait(false);
         var parsed = Json.Read<List<List<string>>>(body);

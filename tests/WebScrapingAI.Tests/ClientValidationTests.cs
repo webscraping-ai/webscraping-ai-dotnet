@@ -25,18 +25,23 @@ public class ClientValidationTests
     }
 
     [Fact]
-    public async Task SelectedAsync_requires_selector()
+    public async Task SelectedAsync_allows_missing_selector()
     {
-        var client = Client();
-        await Assert.ThrowsAsync<System.ArgumentException>(() => client.SelectedAsync(new SelectedRequest { Url = "https://example.com" }));
+        // selector is optional per the API: omitting it returns whole-page HTML.
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "<h1>x</h1>");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        await client.SelectedAsync(new SelectedRequest { Url = "https://example.com" });
+        handler.Requests[0].RequestUri!.Query.Should().NotContain("selector=");
     }
 
     [Fact]
-    public async Task SelectedMultipleAsync_requires_at_least_one_selector()
+    public async Task SelectedMultipleAsync_allows_missing_selectors()
     {
-        var client = Client();
-        var act = async () => await client.SelectedMultipleAsync(new SelectedMultipleRequest { Url = "https://example.com" });
-        await act.Should().ThrowAsync<System.ArgumentException>().WithMessage("*selector*");
+        // selectors are optional per the API: omitting them returns whole-page HTML.
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "[[\"<h1>x</h1>\"]]");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        await client.SelectedMultipleAsync(new SelectedMultipleRequest { Url = "https://example.com" });
+        handler.Requests[0].RequestUri!.Query.Should().NotContain("selectors=");
     }
 
     [Fact]
