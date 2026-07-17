@@ -7,13 +7,13 @@
 
     <!-- Package metadata -->
     <PackageId>WebScrapingAI</PackageId>
-    <Version>4.0.1</Version>
+    <Version>4.0.2</Version>
     <Authors>WebScraping.AI</Authors>
     <Company>WebScraping.AI</Company>
     <Description>Official .NET client for the WebScraping.AI API. Async, zero runtime dependencies, multi-targets netstandard2.0 and net8.0.</Description>
     <Copyright>Copyright (c) 2026 WebScraping.AI</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/webscraping-ai/webscraping-ai-dotnet</PackageProjectUrl>
+    <PackageProjectUrl>https://webscraping.ai</PackageProjectUrl>
     <RepositoryUrl>https://github.com/webscraping-ai/webscraping-ai-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>webscraping;scraping;api;ai;llm;html;extract</PackageTags>
