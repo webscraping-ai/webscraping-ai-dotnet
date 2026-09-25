@@ -19,7 +19,7 @@ dotnet add package WebScrapingAI
 Or in your `.csproj`:
 
 ```xml
-<PackageReference Include="WebScrapingAI" Version="4.0.0" />
+<PackageReference Include="WebScrapingAI" Version="4.1.0" />
 ```
 
 ## Quickstart
@@ -66,6 +66,37 @@ FieldsResult result = await client.FieldsAsync(new FieldsRequest
 Console.WriteLine(result.Result?["price"]);
 ```
 
+### Search engine results (SERP)
+
+`SerpAsync` returns parsed Google results for a query. It is query-shaped, not
+URL-shaped: `SerpRequest` takes `Q` (required), `Engine` (`google`, the
+default), `Gl` (country, default `us`), `Hl` (language, default `en`) and
+`Page` (1-based, 10 results per page). The page-scraping options (`Js`,
+`Proxy`, `Country`, …) don't apply. Flat 15 credits per search; failed
+searches are not charged.
+
+```csharp
+SerpResult serp = await client.SerpAsync(new SerpRequest
+{
+    Q = "coffee machines",
+    Gl = "us",
+    Hl = "en",
+    Page = 1,
+});
+
+foreach (var r in serp.OrganicResults)
+{
+    Console.WriteLine($"{r.Position}. {r.Title} — {r.Link}");
+}
+Console.WriteLine(serp.SearchInformation.OrganicResultsState); // e.g. "Results for exact spelling"
+Console.WriteLine(serp.Pagination.Next);                       // null on the last page
+```
+
+`Position` restarts at 1 on every page; the absolute rank is
+`(page - 1) * 10 + Position`. Optional fields (`Snippet`, `Date`,
+`ShowingResultsFor`, `TotalResults`, `RelatedSearches`, `Pagination.Next`) are
+null when the API omits them.
+
 ## API
 
 All methods are async and accept an optional `CancellationToken`.
@@ -78,11 +109,12 @@ All methods are async and accept an optional `CancellationToken`.
 | `SelectedMultipleAsync(SelectedMultipleRequest)` | `GET /selected-multiple` | `SelectedMultipleResult` |
 | `QuestionAsync(QuestionRequest)` | `GET /ai/question` | `string` |
 | `FieldsAsync(FieldsRequest)` | `GET /ai/fields` | `FieldsResult` |
+| `SerpAsync(SerpRequest)` | `GET /serp` | `SerpResult` |
 | `AccountAsync()` | `GET /account` | `AccountInfo` |
 
 ### Common request options
 
-Every request type extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
+Every request type except `SerpRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
 
 ### Errors
 
@@ -136,7 +168,7 @@ new WebScrapingAIClientOptions
     ApiKey = "...",                                          // or WEBSCRAPING_AI_API_KEY env var
     BaseUrl = "https://api.webscraping.ai",                  // override for staging/test
     Timeout = TimeSpan.FromSeconds(60),                      // per-request
-    UserAgent = "webscraping-ai-dotnet/4.0.0",               // overridable
+    UserAgent = "webscraping-ai-dotnet/4.1.0",               // overridable
     HttpHandler = null,                                      // plug in a custom HttpMessageHandler
 };
 ```
@@ -148,7 +180,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 7 endpoints against the live API. Costs ~17 credits per run.
+The `samples/Smoke` console app exercises all 8 endpoints against the live API. Costs ~32 credits per run (the SERP call is 15).
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke

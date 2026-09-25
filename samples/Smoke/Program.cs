@@ -6,7 +6,7 @@ using WebScrapingAI;
 namespace WebScrapingAI.Samples.Smoke;
 
 /// <summary>
-/// Hits the live WebScraping.AI API across all 7 endpoints. Costs ~17 credits.
+/// Hits the live WebScraping.AI API across all 8 endpoints. Costs ~32 credits.
 /// Run with: WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
 /// </summary>
 internal static class Program
@@ -84,8 +84,15 @@ internal static class Program
             return fields.Result is null ? "(no result)" : string.Join(", ", FormatFields(fields.Result));
         });
 
+        failed += await Step("serp", async () =>
+        {
+            var serp = await client.SerpAsync(new SerpRequest { Q = "coffee machines" });
+            var first = serp.OrganicResults.Count > 0 ? serp.OrganicResults[0].Title : "(none)";
+            return $"{serp.OrganicResults.Count} result(s), first={Preview(first)}";
+        });
+
         Console.WriteLine();
-        Console.WriteLine(failed == 0 ? "All 7 endpoints OK." : $"{failed} endpoint(s) failed.");
+        Console.WriteLine(failed == 0 ? "All 8 endpoints OK." : $"{failed} endpoint(s) failed.");
         return failed == 0 ? 0 : 1;
     }
 

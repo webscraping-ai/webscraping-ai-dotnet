@@ -129,6 +129,57 @@ public class ClientEndpointTests
     }
 
     [Fact]
+    public async Task SerpAsync_sends_query_params_and_parses_result()
+    {
+        const string body = "{" +
+            "\"search_parameters\":{\"engine\":\"google\",\"q\":\"coffee machines\",\"gl\":\"de\",\"hl\":\"de\",\"page\":2}," +
+            "\"search_information\":{\"query_displayed\":\"coffee machines\",\"organic_results_state\":\"Results for exact spelling\",\"total_results\":160000000}," +
+            "\"organic_results\":[" +
+            "{\"position\":1,\"title\":\"Best Coffee Machines\",\"link\":\"https://www.example.com/best\",\"domain\":\"example.com\",\"displayed_link\":\"www.example.com › Reviews\",\"snippet\":\"We tested 20\",\"date\":\"Apr 13, 2026\"}," +
+            "{\"position\":2,\"title\":\"Shop\",\"link\":\"https://shop.test/\",\"domain\":\"shop.test\",\"displayed_link\":\"shop.test\"}]," +
+            "\"related_searches\":[{\"query\":\"best espresso machine\"}]," +
+            "\"pagination\":{\"current\":2,\"next\":3}}";
+        var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, body, "application/json"));
+        var result = await client.SerpAsync(new SerpRequest { Q = "coffee machines", Engine = "google", Gl = "de", Hl = "de", Page = 2 });
+
+        ReqUri(handler).AbsolutePath.Should().Be("/serp");
+        Query(handler).Should().Be("api_key=test-key&q=coffee%20machines&engine=google&gl=de&hl=de&page=2");
+
+        result.SearchParameters.Q.Should().Be("coffee machines");
+        result.SearchParameters.Page.Should().Be(2);
+        result.SearchInformation.OrganicResultsState.Should().Be("Results for exact spelling");
+        result.SearchInformation.ShowingResultsFor.Should().BeNull();
+        result.SearchInformation.TotalResults.Should().Be(160000000);
+        result.OrganicResults.Should().HaveCount(2);
+        result.OrganicResults[0].Position.Should().Be(1);
+        result.OrganicResults[0].Domain.Should().Be("example.com");
+        result.OrganicResults[0].DisplayedLink.Should().Be("www.example.com › Reviews");
+        result.OrganicResults[0].Snippet.Should().Be("We tested 20");
+        result.OrganicResults[0].Date.Should().Be("Apr 13, 2026");
+        result.OrganicResults[1].Snippet.Should().BeNull();
+        result.OrganicResults[1].Date.Should().BeNull();
+        result.RelatedSearches.Should().ContainSingle().Which.Query.Should().Be("best espresso machine");
+        result.Pagination.Current.Should().Be(2);
+        result.Pagination.Next.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task SerpAsync_omits_unset_options_and_scraping_params()
+    {
+        const string body = "{\"search_parameters\":{\"engine\":\"google\",\"q\":\"nothing\",\"gl\":\"us\",\"hl\":\"en\",\"page\":1}," +
+            "\"search_information\":{\"query_displayed\":\"nothing\",\"organic_results_state\":\"Fully empty\"}," +
+            "\"organic_results\":[],\"pagination\":{\"current\":1}}";
+        var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, body, "application/json"));
+        var result = await client.SerpAsync(new SerpRequest { Q = "nothing" });
+
+        Query(handler).Should().Be("api_key=test-key&q=nothing");
+        result.OrganicResults.Should().BeEmpty();
+        result.RelatedSearches.Should().BeNull();
+        result.SearchInformation.TotalResults.Should().BeNull();
+        result.Pagination.Next.Should().BeNull();
+    }
+
+    [Fact]
     public async Task AccountAsync_returns_typed_info()
     {
         var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, "{\"email\":\"a@b.c\",\"remaining_api_calls\":500,\"resets_at\":1700000000,\"remaining_concurrency\":10}"));

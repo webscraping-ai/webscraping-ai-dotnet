@@ -156,6 +156,27 @@ public sealed class WebScrapingAIClient : IDisposable
         return Json.Read<FieldsResult>(body);
     }
 
+    // ---------- /serp ----------
+    /// <summary>
+    /// Search engine results for a query. Flat 15 credits per search; failed
+    /// searches are not charged.
+    /// </summary>
+    public async Task<SerpResult> SerpAsync(SerpRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null) throw new ArgumentNullException(nameof(request));
+        Require(request.Q, nameof(request.Q));
+        // Query-shaped endpoint: none of the CommonParams scraping options apply.
+        var q = new QueryEncoder()
+            .Set("q", request.Q);
+        if (!string.IsNullOrEmpty(request.Engine)) q.Set("engine", request.Engine);
+        if (!string.IsNullOrEmpty(request.Gl)) q.Set("gl", request.Gl);
+        if (!string.IsNullOrEmpty(request.Hl)) q.Set("hl", request.Hl);
+        if (request.Page.HasValue) q.Set("page", request.Page.Value);
+
+        var body = await RequestStringAsync("/serp", q, cancellationToken).ConfigureAwait(false);
+        return Json.Read<SerpResult>(body);
+    }
+
     // ---------- /account ----------
     public async Task<AccountInfo> AccountAsync(CancellationToken cancellationToken = default)
     {

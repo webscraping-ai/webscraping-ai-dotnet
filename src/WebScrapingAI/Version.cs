@@ -7,5 +7,5 @@ namespace WebScrapingAI;
 /// </summary>
 public static class SdkVersion
 {
-    public const string Value = "4.0.2";
+    public const string Value = "4.1.0";
 }

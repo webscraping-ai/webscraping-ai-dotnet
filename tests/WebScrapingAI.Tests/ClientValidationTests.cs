@@ -52,6 +52,14 @@ public class ClientValidationTests
     }
 
     [Fact]
+    public async Task SerpAsync_requires_q()
+    {
+        var client = Client();
+        var act = async () => await client.SerpAsync(new SerpRequest());
+        await act.Should().ThrowAsync<System.ArgumentException>().WithMessage("*Q*");
+    }
+
+    [Fact]
     public async Task FieldsAsync_requires_at_least_one_field()
     {
         var client = Client();

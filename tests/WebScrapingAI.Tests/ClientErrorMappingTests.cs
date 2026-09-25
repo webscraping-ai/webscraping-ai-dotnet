@@ -43,6 +43,21 @@ public class ClientErrorMappingTests
         ex.ResponseBody.Should().Contain("status_code");
     }
 
+    [Theory]
+    [InlineData(400, typeof(BadRequestException))]
+    [InlineData(402, typeof(PaymentRequiredException))]
+    [InlineData(504, typeof(GatewayTimeoutException))]
+    public async Task SerpAsync_maps_status_without_scraping_envelope(int status, System.Type expected)
+    {
+        // /serp error bodies need not carry the scraping envelope fields.
+        var client = Client(Json((HttpStatusCode)status, "{\"error\":\"serp failed\"}"));
+        var act = async () => await client.SerpAsync(new SerpRequest { Q = "coffee machines" });
+        var ex = (await act.Should().ThrowAsync<ApiException>()).Which;
+        ex.GetType().Should().Be(expected);
+        ex.Message.Should().Contain("serp failed");
+        ex.ApiStatusCode.Should().BeNull();
+    }
+
     [Fact]
     public async Task Maps_unmapped_status_to_base_ApiException()
     {
