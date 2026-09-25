@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file. The format 
 ### Added
 
 - `SerpAsync(SerpRequest)` for the new `GET /serp` endpoint — parsed search engine (Google) results for a query. `SerpRequest` takes `Q` (required), `Engine`, `Gl`, `Hl` and `Page`; it does not extend `CommonRequest` since the page-scraping options don't apply. Returns a typed `SerpResult` (`SearchParameters`, `SearchInformation`, `OrganicResults`, `RelatedSearches`, `Pagination`), with optional fields nullable. Flat 15 credits per search.
+- `SerpAsync` validates input before any request: a null, empty or whitespace-only `Q` throws `ArgumentException` (`Q` is otherwise sent untrimmed), and `Page < 1` throws `ArgumentOutOfRangeException` — the server would silently coerce it to page 1 and still bill. The server caps `Page` at 100.
+
+### Fixed
+
+- Smoke sample (`samples/Smoke`) now asserts on results instead of only catching exceptions: SERP requires non-empty `organic_results` and `search_parameters.q == "coffee machines"`, `selected_multiple` requires at least one non-empty group, text endpoints fail on empty output and `fields` fails without a `result`. Page tools run with `js=false` and `proxy=datacenter` so the documented ~31-credit cost holds, and FAIL lines redact the API key.
 
 ## [4.0.2] — 2026-07-17
 

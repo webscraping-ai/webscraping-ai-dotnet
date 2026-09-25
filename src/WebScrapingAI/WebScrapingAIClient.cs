@@ -164,7 +164,12 @@ public sealed class WebScrapingAIClient : IDisposable
     public async Task<SerpResult> SerpAsync(SerpRequest request, CancellationToken cancellationToken = default)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
-        Require(request.Q, nameof(request.Q));
+        // Whitespace-only queries are rejected too; Q is otherwise sent untrimmed.
+        if (string.IsNullOrWhiteSpace(request.Q))
+            throw new ArgumentException($"{nameof(request.Q)} is required and must not be blank", nameof(request.Q));
+        // The server silently coerces invalid pages to 1 (and still bills), so reject them here.
+        if (request.Page.HasValue && request.Page.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(request.Page), request.Page.Value, $"{nameof(request.Page)} must be >= 1");
         // Query-shaped endpoint: none of the CommonParams scraping options apply.
         var q = new QueryEncoder()
             .Set("q", request.Q);

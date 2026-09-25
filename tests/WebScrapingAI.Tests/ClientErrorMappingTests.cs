@@ -46,10 +46,29 @@ public class ClientErrorMappingTests
     [Theory]
     [InlineData(400, typeof(BadRequestException))]
     [InlineData(402, typeof(PaymentRequiredException))]
+    [InlineData(403, typeof(AuthenticationException))]
+    [InlineData(429, typeof(RateLimitException))]
+    [InlineData(500, typeof(ServerException))]
+    [InlineData(504, typeof(GatewayTimeoutException))]
+    public async Task SerpAsync_uses_message_from_real_serp_error_body(int status, System.Type expected)
+    {
+        // Real /serp error bodies are {"message": "..."}.
+        var client = Client(Json((HttpStatusCode)status, "{\"message\":\"q is required\"}"));
+        var act = async () => await client.SerpAsync(new SerpRequest { Q = "coffee machines" });
+        var ex = (await act.Should().ThrowAsync<ApiException>()).Which;
+        ex.GetType().Should().Be(expected);
+        ex.Message.Should().Contain("q is required");
+        ex.ApiStatusCode.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(400, typeof(BadRequestException))]
+    [InlineData(402, typeof(PaymentRequiredException))]
     [InlineData(504, typeof(GatewayTimeoutException))]
     public async Task SerpAsync_maps_status_without_scraping_envelope(int status, System.Type expected)
     {
-        // /serp error bodies need not carry the scraping envelope fields.
+        // Non-standard body shape: /serp errors are {message}, but the SDK must
+        // still surface the body text for other shapes.
         var client = Client(Json((HttpStatusCode)status, "{\"error\":\"serp failed\"}"));
         var act = async () => await client.SerpAsync(new SerpRequest { Q = "coffee machines" });
         var ex = (await act.Should().ThrowAsync<ApiException>()).Which;

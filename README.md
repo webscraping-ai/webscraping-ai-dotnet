@@ -71,7 +71,9 @@ Console.WriteLine(result.Result?["price"]);
 `SerpAsync` returns parsed Google results for a query. It is query-shaped, not
 URL-shaped: `SerpRequest` takes `Q` (required), `Engine` (`google`, the
 default), `Gl` (country, default `us`), `Hl` (language, default `en`) and
-`Page` (1-based, 10 results per page). The page-scraping options (`Js`,
+`Page` (1-based, 10 results per page; the server caps it at 100). A blank or
+whitespace-only `Q` throws `ArgumentException`, and `Page < 1` throws
+`ArgumentOutOfRangeException`, before any request is sent. The page-scraping options (`Js`,
 `Proxy`, `Country`, …) don't apply. Flat 15 credits per search; failed
 searches are not charged.
 
@@ -180,7 +182,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 8 endpoints against the live API. Costs ~32 credits per run (the SERP call is 15).
+The `samples/Smoke` console app exercises all 8 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, at least one selector match). Page tools run with `Js = false` and `Proxy = "datacenter"`, so a run costs ~31 credits: 4 page calls × 1 + question/fields 2 × 6 + SERP 15. It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke

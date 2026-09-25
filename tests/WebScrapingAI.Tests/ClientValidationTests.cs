@@ -59,6 +59,55 @@ public class ClientValidationTests
         await act.Should().ThrowAsync<System.ArgumentException>().WithMessage("*Q*");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public async Task SerpAsync_rejects_blank_q_before_any_request(string q)
+    {
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "{}");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        var act = async () => await client.SerpAsync(new SerpRequest { Q = q });
+        await act.Should().ThrowAsync<System.ArgumentException>().WithMessage("*Q*");
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SerpAsync_rejects_null_q()
+    {
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "{}");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        var act = async () => await client.SerpAsync(new SerpRequest { Q = null! });
+        await act.Should().ThrowAsync<System.ArgumentException>();
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public async Task SerpAsync_rejects_page_below_one_before_any_request(int page)
+    {
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "{}");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        var act = async () => await client.SerpAsync(new SerpRequest { Q = "coffee", Page = page });
+        var ex = (await act.Should().ThrowAsync<System.ArgumentOutOfRangeException>()).Which;
+        ex.ParamName.Should().Be("Page");
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SerpAsync_sends_q_untrimmed_and_accepts_page_one()
+    {
+        var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "{}", "application/json");
+        var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
+        await client.SerpAsync(new SerpRequest { Q = "  coffee ", Page = 1 });
+        var query = handler.Requests[0].RequestUri!.Query;
+        query.Should().Contain("q=%20%20coffee%20");
+        query.Should().Contain("page=1");
+    }
+
     [Fact]
     public async Task FieldsAsync_requires_at_least_one_field()
     {
