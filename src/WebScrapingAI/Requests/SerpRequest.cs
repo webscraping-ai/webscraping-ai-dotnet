@@ -21,7 +21,7 @@ public sealed class SerpRequest
 
     /// <summary>
     /// Results page number, starting at 1 (default 1, 10 results per page). Values below 1 throw
-    /// <see cref="System.ArgumentOutOfRangeException"/>. The server caps the page at 100.
+    /// <see cref="System.ArgumentOutOfRangeException"/>. The server rejects a page above 100 with a 400 (not billed).
     /// </summary>
     public int? Page { get; init; }
 }

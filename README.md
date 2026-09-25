@@ -71,9 +71,11 @@ Console.WriteLine(result.Result?["price"]);
 `SerpAsync` returns parsed Google results for a query. It is query-shaped, not
 URL-shaped: `SerpRequest` takes `Q` (required), `Engine` (`google`, the
 default), `Gl` (country, default `us`), `Hl` (language, default `en`) and
-`Page` (1-based, 10 results per page; the server caps it at 100). A blank or
-whitespace-only `Q` throws `ArgumentException`, and `Page < 1` throws
-`ArgumentOutOfRangeException`, before any request is sent. The page-scraping options (`Js`,
+`Page` (1–100, 10 results per page; the server rejects values above 100 with a
+400). A blank or whitespace-only `Q` throws `ArgumentException`, and `Page < 1`
+throws `ArgumentOutOfRangeException`, before any request is sent (the server
+also rejects these with a 400, not billed; checking client-side saves the round
+trip). The page-scraping options (`Js`,
 `Proxy`, `Country`, …) don't apply. Flat 15 credits per search; failed
 searches are not charged.
 

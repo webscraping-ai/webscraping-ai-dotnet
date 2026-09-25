@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file. The format 
 ### Added
 
 - `SerpAsync(SerpRequest)` for the new `GET /serp` endpoint — parsed search engine (Google) results for a query. `SerpRequest` takes `Q` (required), `Engine`, `Gl`, `Hl` and `Page`; it does not extend `CommonRequest` since the page-scraping options don't apply. Returns a typed `SerpResult` (`SearchParameters`, `SearchInformation`, `OrganicResults`, `RelatedSearches`, `Pagination`), with optional fields nullable. Flat 15 credits per search.
-- `SerpAsync` validates input before any request: a null, empty or whitespace-only `Q` throws `ArgumentException` (`Q` is otherwise sent untrimmed), and `Page < 1` throws `ArgumentOutOfRangeException` — the server would silently coerce it to page 1 and still bill. The server caps `Page` at 100.
+- `SerpAsync` validates input before any request: a null, empty or whitespace-only `Q` throws `ArgumentException` (`Q` is otherwise sent untrimmed), and `Page < 1` throws `ArgumentOutOfRangeException` — the server also rejects it with a 400 (not billed), so checking client-side saves the round trip. Pages are 1–100: the server rejects a `Page` above 100 with a 400.
 
 ### Fixed
 

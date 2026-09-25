@@ -167,7 +167,7 @@ public sealed class WebScrapingAIClient : IDisposable
         // Whitespace-only queries are rejected too; Q is otherwise sent untrimmed.
         if (string.IsNullOrWhiteSpace(request.Q))
             throw new ArgumentException($"{nameof(request.Q)} is required and must not be blank", nameof(request.Q));
-        // The server silently coerces invalid pages to 1 (and still bills), so reject them here.
+        // The server also rejects invalid pages with a 400 (not billed); checking here saves the round trip.
         if (request.Page.HasValue && request.Page.Value < 1)
             throw new ArgumentOutOfRangeException(nameof(request.Page), request.Page.Value, $"{nameof(request.Page)} must be >= 1");
         // Query-shaped endpoint: none of the CommonParams scraping options apply.
