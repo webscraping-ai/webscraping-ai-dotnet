@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using WebScrapingAI;
@@ -8,9 +9,10 @@ using WebScrapingAI;
 namespace WebScrapingAI.Samples.Smoke;
 
 /// <summary>
-/// Hits the live WebScraping.AI API across all 8 endpoints. Page tools run with
-/// js=false and proxy=datacenter, so a run costs ~31 credits: 4 page calls x 1
-/// (html, text, selected, selected_multiple) + question/fields 2 x 6 + serp 15.
+/// Hits the live WebScraping.AI API across all 9 endpoints. Page tools run with
+/// js=false and proxy=datacenter, so a run costs ~46 credits: 4 page calls x 1
+/// (html, text, selected, selected_multiple) + question/fields 2 x 6 + serp 15
+/// + data 15 (the data_unsupported check is a free server-side 400).
 /// Each step asserts on the result shape, not just the absence of exceptions.
 /// Run with: WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
 /// </summary>
@@ -19,6 +21,8 @@ internal static class Program
     private const string TargetUrl = "https://example.com";
     private const string SerpQuery = "coffee machines";
     private const string DatacenterProxy = "datacenter";
+    private const string DataUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    private const string UnsupportedDataUrl = "https://example.com/";
 
     private static string? _apiKey;
 
@@ -114,8 +118,38 @@ internal static class Program
             return $"{serp.OrganicResults.Count} result(s), first={Preview(first)}";
         });
 
+        failed += await Step("data", async () =>
+        {
+            var result = await client.DataAsync(new DataRequest { Url = DataUrl });
+            if (result.ParseStatus != "ok")
+                throw new SmokeAssertionException($"parse_status was '{result.ParseStatus}', expected 'ok'");
+            if (result.RequestParameters.Provider != "youtube")
+                throw new SmokeAssertionException($"request_parameters.provider was '{result.RequestParameters.Provider}', expected 'youtube'");
+            if (result.Data is not { ValueKind: JsonValueKind.Object } data)
+                throw new SmokeAssertionException("data is null or not an object");
+            var title = data.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+            return $"provider={result.RequestParameters.Provider} type={result.RequestParameters.Type} title={Preview(RequireNonEmpty(title, "data.title"))}";
+        });
+
+        failed += await Step("data_unsupported", async () =>
+        {
+            // No client-side site filter: the server must be the one rejecting this (free 400).
+            try
+            {
+                await client.DataAsync(new DataRequest { Url = UnsupportedDataUrl });
+            }
+            catch (BadRequestException ex)
+            {
+                // The server's message proves the rejection didn't come from the client.
+                if (!ex.Message.Contains("Unsupported URL"))
+                    throw new SmokeAssertionException($"400 message lacks 'Unsupported URL': {Preview(ex.Message)}");
+                return $"server 400: {Preview(ex.Message)}";
+            }
+            throw new SmokeAssertionException($"expected a 400 BadRequestException for {UnsupportedDataUrl}");
+        });
+
         Console.WriteLine();
-        Console.WriteLine(failed == 0 ? "All 8 endpoints OK." : $"{failed} endpoint(s) failed.");
+        Console.WriteLine(failed == 0 ? "All 9 endpoints OK." : $"{failed} endpoint(s) failed.");
         return failed == 0 ? 0 : 1;
     }
 

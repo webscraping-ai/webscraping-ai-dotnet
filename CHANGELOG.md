@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.2.0] — 2026-09-25
+### Added
+
+- `DataAsync(DataRequest)` for the new `GET /data` endpoint. It returns structured JSON for a page on a supported site, e.g. YouTube, TikTok, X, LinkedIn, Instagram or Reddit. `DataRequest` takes `Url` (required), `Country`, `Transcript` and `TranscriptLanguage`, plus `ExtraParams` for provider-specific options sent as-is. Like `SerpRequest`, it doesn't extend `CommonRequest`. The result is a `DataResult` with `RequestParameters` (`Url`, `Provider`, `Type`), `ParseStatus` and an untyped `Data` (`JsonElement?`, null on `parse_failed`/`not_found`). `Provider`, `Type` and `ParseStatus` are plain strings. Each request costs 15 credits.
+- `DataAsync` checks only that `Url` isn't blank. It never checks the URL against a site list: sites are added on the server, and an unsupported URL or page type returns a 400 (`BadRequestException`) that is not charged. Its message lists what is supported. An `ExtraParams` key that belongs to a dedicated option (`api_key`, `url`, `country`, `transcript`, `transcript_language`) throws `ArgumentException`, whether or not that option is set. `ExtraParams` entries with a null or empty value are dropped.
+- The smoke sample (`samples/Smoke`) now also checks `/data`. It asserts a YouTube video returns `parse_status` `ok`, provider `youtube` and a non-empty `title`, and that the server rejects `https://example.com/` with a 400 whose message contains `Unsupported URL`.
+
 ## [4.1.0] — 2026-09-25
 
 ### Added

@@ -182,6 +182,65 @@ public sealed class WebScrapingAIClient : IDisposable
         return Json.Read<SerpResult>(body);
     }
 
+    // ---------- /data ----------
+    private static readonly Dictionary<string, string> DataReservedParams = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["api_key"] = "WebScrapingAIClientOptions.ApiKey",
+        ["url"] = "DataRequest.Url",
+        ["country"] = "DataRequest.Country",
+        ["transcript"] = "DataRequest.Transcript",
+        ["transcript_language"] = "DataRequest.TranscriptLanguage",
+    };
+
+    /// <summary>
+    /// Structured JSON for a page on a supported site (e.g. a YouTube video, TikTok
+    /// profile, X post, LinkedIn company, Instagram reel or Reddit thread). Flat 15
+    /// credits per request, including <c>parse_failed</c>/<c>not_found</c> results;
+    /// failed fetches are not charged.
+    /// <para>
+    /// The URL is never checked against a site list here: supported sites are added
+    /// on the server, which rejects an unsupported URL with a 400
+    /// (<see cref="BadRequestException"/>, not charged).
+    /// </para>
+    /// </summary>
+    public async Task<DataResult> DataAsync(DataRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null) throw new ArgumentNullException(nameof(request));
+        // Only a non-blank check: the server's free 400 is the source of truth for "unsupported".
+        if (string.IsNullOrWhiteSpace(request.Url))
+            throw new ArgumentException($"{nameof(request.Url)} is required and must not be blank", nameof(request.Url));
+        if (request.ExtraParams is not null)
+        {
+            foreach (var key in request.ExtraParams.Keys)
+            {
+                // Never let extra params override the key, the target URL or a typed option.
+                if (DataReservedParams.TryGetValue(key, out var option))
+                {
+                    throw new ArgumentException(
+                        $"{nameof(request.ExtraParams)} must not contain '{key}'; use {option} instead",
+                        nameof(request.ExtraParams));
+                }
+            }
+        }
+        // None of the CommonParams scraping options apply to /data.
+        var q = new QueryEncoder()
+            .Set("url", request.Url);
+        if (!string.IsNullOrEmpty(request.Country)) q.Set("country", request.Country);
+        if (request.Transcript.HasValue) q.Set("transcript", request.Transcript.Value);
+        if (!string.IsNullOrEmpty(request.TranscriptLanguage)) q.Set("transcript_language", request.TranscriptLanguage);
+        if (request.ExtraParams is not null)
+        {
+            foreach (var kv in request.ExtraParams)
+            {
+                if (string.IsNullOrEmpty(kv.Key)) continue;
+                q.Set(kv.Key, kv.Value);
+            }
+        }
+
+        var body = await RequestStringAsync("/data", q, cancellationToken).ConfigureAwait(false);
+        return Json.Read<DataResult>(body);
+    }
+
     // ---------- /account ----------
     public async Task<AccountInfo> AccountAsync(CancellationToken cancellationToken = default)
     {
@@ -218,11 +277,12 @@ public sealed class WebScrapingAIClient : IDisposable
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ApiTimeoutException($"Request timed out after {_options.Timeout.TotalSeconds:0.###}s", ex);
+            throw new ApiTimeoutException($"Request timed out after {_options.Timeout.TotalSeconds:0.###}s", Scrub(ex));
         }
         catch (HttpRequestException ex)
         {
-            throw new ApiConnectionException("Connection error: " + ex.Message, ex);
+            // The api_key rides in the URL query; transport messages may embed the URL.
+            throw new ApiConnectionException("Connection error: " + Redact(ex.Message), Scrub(ex));
         }
 
         using (response)
@@ -238,6 +298,47 @@ public sealed class WebScrapingAIClient : IDisposable
 
             throw ParseApiException(status, body);
         }
+    }
+
+    /// <summary>Removes the API key (raw or URL-encoded) and any <c>api_key=…</c> pair from <paramref name="text"/>.</summary>
+    private string Redact(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
+        var result = text!.Replace(ResolvedApiKey, "[REDACTED]");
+        var escaped = Uri.EscapeDataString(ResolvedApiKey);
+        if (escaped != ResolvedApiKey) result = result.Replace(escaped, "[REDACTED]");
+        return ApiKeyPairPattern.Replace(result, "$1[REDACTED]");
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex ApiKeyPairPattern =
+        new(@"(api_key=)[^&\s""'<>]*", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Returns <paramref name="ex"/> unchanged when no message in its cause chain
+    /// mentions the key; otherwise rebuilds the chain with redacted messages so the
+    /// key can't leak through <see cref="Exception.InnerException"/> or logging.
+    /// </summary>
+    private Exception Scrub(Exception ex)
+    {
+        if (!ChainMentionsKey(ex)) return ex;
+        var inner = ex.InnerException is null ? null : Scrub(ex.InnerException);
+        var message = Redact(ex.Message);
+        return ex switch
+        {
+            HttpRequestException => new HttpRequestException(message, inner),
+            TaskCanceledException => new TaskCanceledException(message, inner),
+            OperationCanceledException => new OperationCanceledException(message, inner),
+            _ => new Exception($"{ex.GetType().FullName}: {message}", inner),
+        };
+    }
+
+    private bool ChainMentionsKey(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (Redact(e.Message) != e.Message) return true;
+        }
+        return false;
     }
 
     private static ApiException ParseApiException(int status, string body)

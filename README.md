@@ -19,7 +19,7 @@ dotnet add package WebScrapingAI
 Or in your `.csproj`:
 
 ```xml
-<PackageReference Include="WebScrapingAI" Version="4.1.0" />
+<PackageReference Include="WebScrapingAI" Version="4.2.0" />
 ```
 
 ## Quickstart
@@ -101,6 +101,65 @@ Console.WriteLine(serp.Pagination.Next);                       // null on the la
 `ShowingResultsFor`, `TotalResults`, `RelatedSearches`, `Pagination.Next`) are
 null when the API omits them.
 
+### Structured data for supported sites
+
+`DataAsync` returns structured JSON for a public page on a supported site. Pass
+the page's normal URL, for example a YouTube video, a TikTok profile, an X
+post, a LinkedIn company, an Instagram reel or a Reddit thread. The server
+detects the site (`Provider`) and page kind (`Type`) from the URL. **More sites
+are added on the server over time, and the SDK doesn't check URLs itself**, so
+new sites work without an SDK upgrade. An unsupported URL or page type returns a
+400 (`BadRequestException`) that is not charged. Its message lists what is
+supported. `DataRequest` takes:
+
+- `Url` (required; a blank `Url` throws `ArgumentException`). Sent as-is.
+- `Country`: two-letter country code of the proxy used to fetch the page, `us`
+  by default.
+- `Transcript`: YouTube videos only. Also fetch the video's transcript into
+  `data.transcript`. It's null when no matching captions are available. If the
+  transcript fetch itself fails, the whole request fails with a 500 and is not
+  charged.
+- `TranscriptLanguage`: caption language to pick, e.g. `en` or `de`. Without
+  it, English is preferred, then the first available track. If the video has no
+  captions in that language, `data.transcript` is null.
+
+The page-scraping options (`Js`, `Proxy`, `Headers`, …) don't apply. Each
+request costs 15 credits, including results that come back `parse_failed` or
+`not_found`. Failed fetches aren't charged.
+
+```csharp
+DataResult result = await client.DataAsync(new DataRequest
+{
+    Url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    Transcript = true,
+});
+
+Console.WriteLine($"{result.RequestParameters.Provider}/{result.RequestParameters.Type}"); // youtube/video
+Console.WriteLine(result.ParseStatus);                                                      // ok, parse_failed or not_found
+if (result.Data is { } data)                                                                // System.Text.Json.JsonElement
+{
+    Console.WriteLine(data.GetProperty("title").GetString());
+}
+```
+
+`Data` is an untyped `JsonElement?` because its shape depends on the provider
+and page type. Fields are snake_case, and fields a page doesn't expose are
+null. `Data` itself is null when the API returns `null`, for example on
+`parse_failed`. `Provider`, `Type` and `ParseStatus` are plain strings, so
+values added later still come through. For provider-specific options the SDK
+doesn't model yet, use `ExtraParams`. Its entries are sent as-is, and entries
+with a null or empty value are dropped. A key that belongs to a dedicated option
+throws `ArgumentException`, whether or not that option is set: `api_key`, `url`,
+`country`, `transcript` or `transcript_language`.
+
+```csharp
+await client.DataAsync(new DataRequest
+{
+    Url = "https://www.example-new-site.com/p/123",
+    ExtraParams = new Dictionary<string, string> { ["some_option"] = "value" },
+});
+```
+
 ## API
 
 All methods are async and accept an optional `CancellationToken`.
@@ -114,11 +173,12 @@ All methods are async and accept an optional `CancellationToken`.
 | `QuestionAsync(QuestionRequest)` | `GET /ai/question` | `string` |
 | `FieldsAsync(FieldsRequest)` | `GET /ai/fields` | `FieldsResult` |
 | `SerpAsync(SerpRequest)` | `GET /serp` | `SerpResult` |
+| `DataAsync(DataRequest)` | `GET /data` | `DataResult` |
 | `AccountAsync()` | `GET /account` | `AccountInfo` |
 
 ### Common request options
 
-Every request type except `SerpRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
+Every request type except `SerpRequest` and `DataRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
 
 ### Errors
 
@@ -172,7 +232,7 @@ new WebScrapingAIClientOptions
     ApiKey = "...",                                          // or WEBSCRAPING_AI_API_KEY env var
     BaseUrl = "https://api.webscraping.ai",                  // override for staging/test
     Timeout = TimeSpan.FromSeconds(60),                      // per-request
-    UserAgent = "webscraping-ai-dotnet/4.1.0",               // overridable
+    UserAgent = "webscraping-ai-dotnet/4.2.0",               // overridable
     HttpHandler = null,                                      // plug in a custom HttpMessageHandler
 };
 ```
@@ -184,7 +244,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 8 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, at least one selector match). Page tools run with `Js = false` and `Proxy = "datacenter"`, so a run costs ~31 credits: 4 page calls × 1 + question/fields 2 × 6 + SERP 15. It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
+The `samples/Smoke` console app exercises all 9 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, at least one selector match, a YouTube `/data` result with `parse_status` `ok` and a title, and a server-side 400 for an unsupported `/data` URL). Page tools run with `Js = false` and `Proxy = "datacenter"`, so a run costs ~46 credits: 4 page calls × 1 + question/fields 2 × 6 + SERP 15 + data 15 (the unsupported-URL check is free). It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
