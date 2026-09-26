@@ -158,8 +158,8 @@ public sealed class WebScrapingAIClient : IDisposable
 
     // ---------- /serp ----------
     /// <summary>
-    /// Search engine results for a query. Flat 15 credits per search; failed
-    /// searches are not charged.
+    /// Search engine results for a query. Priced per search (see
+    /// https://webscraping.ai/docs#serp); failed searches are not charged.
     /// </summary>
     public async Task<SerpResult> SerpAsync(SerpRequest request, CancellationToken cancellationToken = default)
     {
@@ -194,9 +194,10 @@ public sealed class WebScrapingAIClient : IDisposable
 
     /// <summary>
     /// Structured JSON for a page on a supported site (e.g. a YouTube video, TikTok
-    /// profile, X post, LinkedIn company, Instagram reel or Reddit thread). Flat 15
-    /// credits per request, including <c>parse_failed</c>/<c>not_found</c> results;
-    /// failed fetches are not charged.
+    /// profile, X post, LinkedIn company, Instagram reel or Reddit thread). Priced
+    /// per site (see https://webscraping.ai/docs#data), including
+    /// <c>parse_failed</c>/<c>not_found</c> results; unsupported URLs and failed
+    /// fetches are not charged.
     /// <para>
     /// The URL is never checked against a site list here: supported sites are added
     /// on the server, which rejects an unsupported URL with a 400

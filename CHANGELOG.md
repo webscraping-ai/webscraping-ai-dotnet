@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+### Changed
+
+- Docs: stop stating credit prices (they're set server-side and change); link to https://webscraping.ai/docs pricing instead.
+
 ## [4.2.0] — 2026-09-25
 ### Added
 

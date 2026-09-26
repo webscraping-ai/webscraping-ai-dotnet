@@ -24,8 +24,8 @@ Or in your `.csproj`:
 
 ## Quickstart
 
-[Sign up](https://webscraping.ai/auth/sign_up) to get an API key — the free
-trial includes 2,000 credits, no credit card required. Your key lives in the
+[Sign up](https://webscraping.ai/auth/sign_up) to get an API key — a free
+trial, no credit card required. Your key lives in the
 [dashboard](https://webscraping.ai/dashboard).
 
 ```csharp
@@ -76,8 +76,8 @@ default), `Gl` (country, default `us`), `Hl` (language, default `en`) and
 throws `ArgumentOutOfRangeException`, before any request is sent (the server
 also rejects these with a 400, not billed; checking client-side saves the round
 trip). The page-scraping options (`Js`,
-`Proxy`, `Country`, …) don't apply. Flat 15 credits per search; failed
-searches are not charged.
+`Proxy`, `Country`, …) don't apply. Priced per search (see
+[pricing](https://webscraping.ai/docs#serp)); failed searches are not charged.
 
 ```csharp
 SerpResult serp = await client.SerpAsync(new SerpRequest
@@ -123,9 +123,10 @@ supported. `DataRequest` takes:
   it, English is preferred, then the first available track. If the video has no
   captions in that language, `data.transcript` is null.
 
-The page-scraping options (`Js`, `Proxy`, `Headers`, …) don't apply. Each
-request costs 15 credits, including results that come back `parse_failed` or
-`not_found`. Failed fetches aren't charged.
+The page-scraping options (`Js`, `Proxy`, `Headers`, …) don't apply. Priced
+per site (see [pricing](https://webscraping.ai/docs#data)), including results
+that come back `parse_failed` or `not_found`; unsupported URLs and failed
+fetches aren't charged.
 
 ```csharp
 DataResult result = await client.DataAsync(new DataRequest
