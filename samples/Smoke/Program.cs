@@ -9,10 +9,11 @@ using WebScrapingAI;
 namespace WebScrapingAI.Samples.Smoke;
 
 /// <summary>
-/// Hits the live WebScraping.AI API across all 9 endpoints. Page tools run with
-/// js=false and proxy=datacenter, so a run costs ~46 credits: 4 page calls x 1
+/// Hits the live WebScraping.AI API across all 10 endpoints. Page tools run with
+/// js=false and proxy=datacenter, so a run costs ~76 credits: 4 page calls x 1
 /// (html, text, selected, selected_multiple) + question/fields 2 x 6 + serp 15
-/// + data 15 (the data_unsupported check is a free server-side 400).
+/// + serp_location (2 pages) 30 + data 15 (serp_locations is free and the
+/// data_unsupported check is a free server-side 400).
 /// Each step asserts on the result shape, not just the absence of exceptions.
 /// Run with: WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
 /// </summary>
@@ -20,6 +21,7 @@ internal static class Program
 {
     private const string TargetUrl = "https://example.com";
     private const string SerpQuery = "coffee machines";
+    private const string SerpLocation = "Austin, TX";
     private const string DatacenterProxy = "datacenter";
     private const string DataUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
     private const string UnsupportedDataUrl = "https://example.com/";
@@ -118,6 +120,26 @@ internal static class Program
             return $"{serp.OrganicResults.Count} result(s), first={Preview(first)}";
         });
 
+        failed += await Step("serp_location", async () =>
+        {
+            var serp = await client.SerpAsync(new SerpRequest { Q = SerpQuery, Location = SerpLocation, Pages = 2 });
+            if (serp.OrganicResults.Count == 0) throw new SmokeAssertionException("organic_results is empty");
+            var used = serp.SearchParameters.LocationUsed;
+            if (used is null || !used.Contains("Austin"))
+                throw new SmokeAssertionException($"search_parameters.location_used was '{used}', expected it to contain 'Austin'");
+            return $"location_used={used} {serp.OrganicResults.Count} result(s) pages_returned={serp.Pagination.PagesReturned}";
+        });
+
+        failed += await Step("serp_locations", async () =>
+        {
+            var locations = await client.SerpLocationsAsync(new SerpLocationsRequest { Q = "austin", Limit = 3 });
+            if (locations.Count == 0) throw new SmokeAssertionException("serp_locations returned no locations");
+            var first = locations[0].CanonicalName;
+            if (!first.Contains("Austin"))
+                throw new SmokeAssertionException($"first canonical_name was '{first}', expected it to contain 'Austin'");
+            return $"{locations.Count} location(s), first={first}";
+        });
+
         failed += await Step("data", async () =>
         {
             var result = await client.DataAsync(new DataRequest { Url = DataUrl });
@@ -149,7 +171,7 @@ internal static class Program
         });
 
         Console.WriteLine();
-        Console.WriteLine(failed == 0 ? "All 9 endpoints OK." : $"{failed} endpoint(s) failed.");
+        Console.WriteLine(failed == 0 ? "All 10 endpoints OK." : $"{failed} endpoint(s) failed.");
         return failed == 0 ? 0 : 1;
     }
 

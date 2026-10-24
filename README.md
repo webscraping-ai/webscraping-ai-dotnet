@@ -19,7 +19,7 @@ dotnet add package WebScrapingAI
 Or in your `.csproj`:
 
 ```xml
-<PackageReference Include="WebScrapingAI" Version="4.2.0" />
+<PackageReference Include="WebScrapingAI" Version="4.3.0" />
 ```
 
 ## Quickstart
@@ -70,13 +70,28 @@ Console.WriteLine(result.Result?["price"]);
 
 `SerpAsync` returns parsed Google results for a query. It is query-shaped, not
 URL-shaped: `SerpRequest` takes `Q` (required), `Engine` (`google`, the
-default), `Gl` (country, default `us`), `Hl` (language, default `en`) and
-`Page` (1–100, 10 results per page; the server rejects values above 100 with a
-400). A blank or whitespace-only `Q` throws `ArgumentException`, and `Page < 1`
-throws `ArgumentOutOfRangeException`, before any request is sent (the server
-also rejects these with a 400, not billed; checking client-side saves the round
-trip). The page-scraping options (`Js`,
-`Proxy`, `Country`, …) don't apply. Priced per search (see
+default), `Gl` (country), `Hl` (language, default `en`), `Page` (1–100, 10
+results per page; the server rejects values above 100 with a 400), `Pages`,
+and the location options `Location`, `Uule`, `Lat`/`Lon` and `Radius`
+(meters, 1–1000).
+
+Every search runs from one fixed location: `Location`, `Lat` + `Lon`, or
+`Uule`, otherwise the capital of the `Gl` country, so repeats and later pages
+stay consistent. `Gl` defaults to the location's country (otherwise `us`).
+`Location` takes a name such as `Austin,Texas,United States` or `Austin, TX`,
+or an id from `SerpLocationsAsync`; an unknown name is a 400 (not billed).
+`Lat`/`Lon` are sent as plain decimals (at most 7 fractional digits) whatever
+the current culture. `Pages` (1–5) fetches consecutive pages, starting at
+`Page`, as one de-duplicated list: `Position` counts through the combined list
+and each result gets a `Page`. Which location options can be combined and the
+upper bounds are checked by the server (a 400, not billed).
+
+A blank or whitespace-only `Q` throws `ArgumentException`; `Page`, `Pages` or
+`Radius` below 1 and a NaN or infinite `Lat`/`Lon` throw
+`ArgumentOutOfRangeException`, before any request is sent (the server also
+rejects these with a 400, not billed; checking client-side saves the round
+trip). The page-scraping options (`Js`, `Proxy`, `Country`, …) don't apply.
+Billed per results page returned (see
 [pricing](https://webscraping.ai/docs#serp)); failed searches are not charged.
 
 ```csharp
@@ -100,6 +115,58 @@ Console.WriteLine(serp.Pagination.Next);                       // null on the la
 `(page - 1) * 10 + Position`. Optional fields (`Snippet`, `Date`,
 `ShowingResultsFor`, `TotalResults`, `RelatedSearches`, `Pagination.Next`) are
 null when the API omits them.
+
+Search from a location and fetch two pages in one call:
+
+```csharp
+SerpResult local = await client.SerpAsync(new SerpRequest
+{
+    Q = "coffee machines",
+    Location = "Austin, TX",
+    Pages = 2,
+});
+
+Console.WriteLine(local.SearchParameters.LocationUsed); // "Austin,Texas,United States"
+Console.WriteLine(local.Pagination.PagesReturned);      // 2
+foreach (var r in local.OrganicResults)
+{
+    Console.WriteLine($"{r.Position} (page {r.Page}). {r.Title}");
+}
+```
+
+The location fields of `SearchParameters` (`Pages`, `LocationRequested`,
+`LocationUsed`, `Lat`, `Lon`, `Radius`), `SerpOrganicResult.Page` and
+`Pagination.PagesReturned` are null when the API omits them (`Pages`, `Page`
+and `PagesReturned` appear only when `Pages` is above 1). `LocationUsed` is the
+matched location's canonical name (or the `Gl` capital's when no location was
+given) and is null for `Lat`/`Lon` searches; `Lat`/`Lon` are echoed on almost
+every response.
+
+#### Looking up locations
+
+`SerpLocationsAsync` finds names for `Location`: up to 10 matches, most
+populous first. It is free and needs no API key on the server. `Q` is part of a
+location name (English names, e.g. `petersburg`; without it the most populous
+locations come back) and `Limit` caps the count (1–10; below 1 throws
+`ArgumentOutOfRangeException`). Pass a result's `CanonicalName` (or `Id`) as
+`Location`.
+
+```csharp
+IReadOnlyList<SerpLocation> locations = await client.SerpLocationsAsync(new SerpLocationsRequest
+{
+    Q = "austin",
+});
+
+var austin = locations[0];
+Console.WriteLine($"{austin.CanonicalName} ({austin.TargetType}, {austin.CountryCode})"); // Austin,Texas,United States (City, US)
+Console.WriteLine($"lon={austin.Gps[0]} lat={austin.Gps[1]}");                           // gps is [longitude, latitude]
+
+await client.SerpAsync(new SerpRequest { Q = "coffee machines", Location = austin.CanonicalName });
+```
+
+`Id` is a string, `GoogleId`, `GoogleParentId` and `Reach` are `long`
+(`GoogleParentId` is null for countries), and `TargetType` is a plain string
+(e.g. `City`, `State`, `Country`).
 
 ### Structured data for supported sites
 
@@ -174,12 +241,13 @@ All methods are async and accept an optional `CancellationToken`.
 | `QuestionAsync(QuestionRequest)` | `GET /ai/question` | `string` |
 | `FieldsAsync(FieldsRequest)` | `GET /ai/fields` | `FieldsResult` |
 | `SerpAsync(SerpRequest)` | `GET /serp` | `SerpResult` |
+| `SerpLocationsAsync(SerpLocationsRequest?)` | `GET /serp/locations` | `IReadOnlyList<SerpLocation>` |
 | `DataAsync(DataRequest)` | `GET /data` | `DataResult` |
 | `AccountAsync()` | `GET /account` | `AccountInfo` |
 
 ### Common request options
 
-Every request type except `SerpRequest` and `DataRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
+Every request type except `SerpRequest`, `SerpLocationsRequest` and `DataRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
 
 ### Errors
 
@@ -233,7 +301,7 @@ new WebScrapingAIClientOptions
     ApiKey = "...",                                          // or WEBSCRAPING_AI_API_KEY env var
     BaseUrl = "https://api.webscraping.ai",                  // override for staging/test
     Timeout = TimeSpan.FromSeconds(60),                      // per-request
-    UserAgent = "webscraping-ai-dotnet/4.2.0",               // overridable
+    UserAgent = "webscraping-ai-dotnet/4.3.0",               // overridable
     HttpHandler = null,                                      // plug in a custom HttpMessageHandler
 };
 ```
@@ -245,7 +313,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 9 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, at least one selector match, a YouTube `/data` result with `parse_status` `ok` and a title, and a server-side 400 for an unsupported `/data` URL). Page tools run with `Js = false` and `Proxy = "datacenter"`, so a run costs ~46 credits: 4 page calls × 1 + question/fields 2 × 6 + SERP 15 + data 15 (the unsupported-URL check is free). It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
+The `samples/Smoke` console app exercises all 10 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, a two-page `Austin, TX` search whose `location_used` contains `Austin`, a location lookup whose first `canonical_name` contains `Austin`, at least one selector match, a YouTube `/data` result with `parse_status` `ok` and a title, and a server-side 400 for an unsupported `/data` URL). Page tools run with `Js = false` and `Proxy = "datacenter"` to keep a run cheap. It makes 4 page calls, a question and a fields call, two SERP searches (one of them two pages, billed per page returned) and one `/data` call; the location lookup and the unsupported-URL check are free. It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke

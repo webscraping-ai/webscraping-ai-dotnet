@@ -5,7 +5,7 @@ namespace WebScrapingAI;
 
 /// <summary>
 /// Response from <c>GET /serp</c>. Field names follow the common SERP API
-/// (SerpApi-family) naming. Fields the API may omit are nullable.
+/// naming. Fields the API may omit are nullable.
 /// </summary>
 public sealed class SerpResult
 {
@@ -46,6 +46,39 @@ public sealed class SerpSearchParameters
 
     [JsonPropertyName("page")]
     public int Page { get; init; }
+
+    /// <summary>The number of pages requested, present only when <see cref="SerpRequest.Pages"/> was above 1.</summary>
+    [JsonPropertyName("pages")]
+    public int? Pages { get; init; }
+
+    /// <summary>The <c>location</c> or <c>uule</c> as sent, when one was given.</summary>
+    [JsonPropertyName("location_requested")]
+    public string? LocationRequested { get; init; }
+
+    /// <summary>
+    /// Canonical name of the matched location, or of the <c>gl</c> country's capital when no location
+    /// was given. Omitted (null) for <c>lat</c>/<c>lon</c> and coordinate-<c>uule</c> searches.
+    /// </summary>
+    [JsonPropertyName("location_used")]
+    public string? LocationUsed { get; init; }
+
+    /// <summary>
+    /// Latitude the search ran from: the given <c>lat</c>, or that of the location, the <c>uule</c> or the
+    /// <c>gl</c> country's capital. Null only when <c>gl</c> is outside the location list.
+    /// </summary>
+    [JsonPropertyName("lat")]
+    public double? Lat { get; init; }
+
+    /// <summary>
+    /// Longitude the search ran from: the given <c>lon</c>, or that of the location, the <c>uule</c> or the
+    /// <c>gl</c> country's capital. Null only when <c>gl</c> is outside the location list.
+    /// </summary>
+    [JsonPropertyName("lon")]
+    public double? Lon { get; init; }
+
+    /// <summary>The radius in meters, when one was given.</summary>
+    [JsonPropertyName("radius")]
+    public int? Radius { get; init; }
 }
 
 /// <summary>The <c>search_information</c> block of <see cref="SerpResult"/>.</summary>
@@ -76,10 +109,15 @@ public sealed class SerpOrganicResult
 {
     /// <summary>
     /// Rank within this page, starting at 1 on every page. Absolute rank is
-    /// <c>(page - 1) * 10 + Position</c>.
+    /// <c>(page - 1) * 10 + Position</c>. With <see cref="SerpRequest.Pages"/> above 1,
+    /// it counts through the combined de-duplicated list (1..N) instead.
     /// </summary>
     [JsonPropertyName("position")]
     public int Position { get; init; }
+
+    /// <summary>The results page this entry came from, present only when <see cref="SerpRequest.Pages"/> was above 1.</summary>
+    [JsonPropertyName("page")]
+    public int? Page { get; init; }
 
     [JsonPropertyName("title")]
     public string Title { get; init; } = string.Empty;
@@ -120,4 +158,11 @@ public sealed class SerpPagination
     /// <summary>The next page number. Null when no further page is offered.</summary>
     [JsonPropertyName("next")]
     public int? Next { get; init; }
+
+    /// <summary>
+    /// How many pages came back, present only when <see cref="SerpRequest.Pages"/> was above 1. Can be
+    /// fewer than requested when Google has no further page or a later page couldn't be fetched (not billed).
+    /// </summary>
+    [JsonPropertyName("pages_returned")]
+    public int? PagesReturned { get; init; }
 }

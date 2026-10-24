@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -177,6 +178,161 @@ public class ClientEndpointTests
         result.RelatedSearches.Should().BeNull();
         result.SearchInformation.TotalResults.Should().BeNull();
         result.Pagination.Next.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SerpAsync_sends_location_params_in_order_and_parses_multi_page_result()
+    {
+        const string body = "{" +
+            "\"search_parameters\":{\"engine\":\"google\",\"q\":\"coffee machines\",\"gl\":\"us\",\"hl\":\"en\",\"page\":1,\"pages\":2," +
+            "\"location_requested\":\"Austin, TX\",\"location_used\":\"Austin,Texas,United States\",\"lat\":30.2672,\"lon\":-97.7431,\"radius\":500}," +
+            "\"search_information\":{\"query_displayed\":\"coffee machines\",\"organic_results_state\":\"Results for exact spelling\"}," +
+            "\"organic_results\":[" +
+            "{\"position\":1,\"page\":1,\"title\":\"A\",\"link\":\"https://a.test/\",\"domain\":\"a.test\",\"displayed_link\":\"a.test\"}," +
+            "{\"position\":11,\"page\":2,\"title\":\"B\",\"link\":\"https://b.test/\",\"domain\":\"b.test\",\"displayed_link\":\"b.test\"}]," +
+            "\"pagination\":{\"current\":2,\"next\":3,\"pages_returned\":2}}";
+        var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, body, "application/json"));
+        var result = await client.SerpAsync(new SerpRequest
+        {
+            Q = "coffee machines",
+            Page = 1,
+            Pages = 2,
+            Location = " Austin, TX",
+            Uule = "w+CAIQICI",
+            Lat = 30.2672,
+            Lon = -97.7431,
+            Radius = 500,
+        });
+
+        // Combinations are the server's to reject; the client sends whatever it is given, untrimmed.
+        Query(handler).Should().Be(
+            "api_key=test-key&q=coffee%20machines&page=1&pages=2&location=%20Austin%2C%20TX&uule=w%2BCAIQICI" +
+            "&lat=30.2672&lon=-97.7431&radius=500");
+
+        result.SearchParameters.Pages.Should().Be(2);
+        result.SearchParameters.LocationRequested.Should().Be("Austin, TX");
+        result.SearchParameters.LocationUsed.Should().Be("Austin,Texas,United States");
+        result.SearchParameters.Radius.Should().Be(500);
+        result.SearchParameters.Lat.Should().Be(30.2672);
+        result.SearchParameters.Lon.Should().Be(-97.7431);
+        result.OrganicResults.Select(r => r.Page).Should().Equal(1, 2);
+        result.OrganicResults[1].Position.Should().Be(11);
+        result.Pagination.PagesReturned.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task SerpAsync_leaves_new_result_fields_null_when_absent()
+    {
+        const string body = "{\"search_parameters\":{\"engine\":\"google\",\"q\":\"x\",\"gl\":\"us\",\"hl\":\"en\",\"page\":1,\"lat\":48,\"lon\":-0.5}," +
+            "\"search_information\":{\"query_displayed\":\"x\",\"organic_results_state\":\"Results for exact spelling\"}," +
+            "\"organic_results\":[{\"position\":1,\"title\":\"A\",\"link\":\"https://a.test/\",\"domain\":\"a.test\",\"displayed_link\":\"a.test\"}]," +
+            "\"pagination\":{\"current\":1}}";
+        var (client, _) = NewClient(StubHandler.Returning(HttpStatusCode.OK, body, "application/json"));
+        var result = await client.SerpAsync(new SerpRequest { Q = "x" });
+
+        result.SearchParameters.Pages.Should().BeNull();
+        result.SearchParameters.LocationRequested.Should().BeNull();
+        result.SearchParameters.LocationUsed.Should().BeNull();
+        result.SearchParameters.Radius.Should().BeNull();
+        result.SearchParameters.Lat.Should().Be(48);
+        result.SearchParameters.Lon.Should().Be(-0.5);
+        result.OrganicResults[0].Page.Should().BeNull();
+        result.Pagination.PagesReturned.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(30.2672, "30.2672")]
+    [InlineData(-97.7431, "-97.7431")]
+    [InlineData(1e-7, "0.0000001")]
+    [InlineData(-1e-7, "-0.0000001")]
+    [InlineData(1e-9, "0")]
+    [InlineData(-1e-9, "0")]
+    [InlineData(1e-5, "0.00001")]
+    [InlineData(48.0, "48")]
+    [InlineData(-180.0, "-180")]
+    [InlineData(0.0, "0")]
+    [InlineData(12.123456789, "12.1234568")]
+    [InlineData(90.10000000001, "90.1")]
+    public void FormatCoordinate_writes_plain_decimal(double value, string expected)
+    {
+        WebScrapingAIClient.FormatCoordinate(value).Should().Be(expected);
+        WebScrapingAIClient.FormatCoordinate(value).Should().MatchRegex(@"^-?\d+(\.\d+)?$");
+    }
+
+    [Fact]
+    public void FormatCoordinate_normalizes_negative_zero()
+    {
+        // A separate fact: xunit treats InlineData(0.0) and InlineData(-0.0) as duplicates.
+        WebScrapingAIClient.FormatCoordinate(-0.0).Should().Be("0");
+        WebScrapingAIClient.FormatCoordinate(-0.00000001).Should().Be("0");
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("fr-FR")]
+    [InlineData("en-US")]
+    public async Task SerpAsync_sends_lat_lon_as_plain_decimal_under_any_culture(string culture)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        var previousUi = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = new CultureInfo(culture);
+            // Guard against globalization-invariant mode silently turning this into an en-US test.
+            1.5.ToString(CultureInfo.CurrentCulture).Should().Be(culture == "en-US" ? "1.5" : "1,5");
+            var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, "{}", "application/json"));
+            await client.SerpAsync(new SerpRequest { Q = "coffee", Lat = 1e-7, Lon = -1234.5678901234, Radius = 1000 });
+
+            Query(handler).Should().Be("api_key=test-key&q=coffee&lat=0.0000001&lon=-1234.5678901&radius=1000");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+            CultureInfo.CurrentUICulture = previousUi;
+        }
+    }
+
+    [Fact]
+    public async Task SerpLocationsAsync_sends_q_and_limit_and_parses_locations()
+    {
+        const string body = "[" +
+            "{\"id\":\"1026201\",\"google_id\":1026201,\"google_parent_id\":21176,\"name\":\"Austin\"," +
+            "\"canonical_name\":\"Austin,Texas,United States\",\"country_code\":\"US\",\"target_type\":\"City\"," +
+            "\"reach\":974447,\"gps\":[-97.7431,30.2672]}," +
+            "{\"id\":\"2840\",\"google_id\":2840,\"name\":\"United States\",\"canonical_name\":\"United States\"," +
+            "\"country_code\":\"US\",\"target_type\":\"Neighborhood Watch\",\"reach\":9000000000,\"gps\":[-77.0369,38.9072]}]";
+        var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, body, "application/json"));
+        var locations = await client.SerpLocationsAsync(new SerpLocationsRequest { Q = "austin", Limit = 3 });
+
+        ReqUri(handler).AbsolutePath.Should().Be("/serp/locations");
+        Query(handler).Should().Be("api_key=test-key&q=austin&limit=3");
+
+        locations.Should().HaveCount(2);
+        var austin = locations[0];
+        austin.Id.Should().Be("1026201");
+        austin.GoogleId.Should().Be(1026201L);
+        austin.GoogleParentId.Should().Be(21176L);
+        austin.Name.Should().Be("Austin");
+        austin.CanonicalName.Should().Be("Austin,Texas,United States");
+        austin.CountryCode.Should().Be("US");
+        austin.TargetType.Should().Be("City");
+        austin.Reach.Should().Be(974447L);
+        austin.Gps.Should().Equal(-97.7431, 30.2672);
+        // Countries have no parent; target_type is an open string; reach can exceed int32.
+        locations[1].GoogleParentId.Should().BeNull();
+        locations[1].TargetType.Should().Be("Neighborhood Watch");
+        locations[1].Reach.Should().Be(9000000000L);
+    }
+
+    [Fact]
+    public async Task SerpLocationsAsync_without_request_sends_only_the_key()
+    {
+        var (client, handler) = NewClient(StubHandler.Returning(HttpStatusCode.OK, "[]", "application/json"));
+        var locations = await client.SerpLocationsAsync();
+
+        ReqUri(handler).AbsolutePath.Should().Be("/serp/locations");
+        Query(handler).Should().Be("api_key=test-key");
+        locations.Should().BeEmpty();
     }
 
     [Fact]

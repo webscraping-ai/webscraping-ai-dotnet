@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [4.3.0] — 2026-10-24
+### Added
+
+- `SerpRequest` gains `Pages`, `Location`, `Uule`, `Lat`, `Lon` and `Radius`. Every search runs from one fixed location (`Location`, `Lat` + `Lon`, or `Uule`, otherwise the capital of the `Gl` country), so repeats and later pages stay consistent, and `Gl` defaults to the location's country. `Pages` (1–5) fetches consecutive pages as one de-duplicated list, billed per results page returned (see https://webscraping.ai/docs#serp).
+- `Lat`/`Lon` are sent as plain decimals with at most 7 fractional digits, culture-invariantly (`1e-7` → `0.0000001`, `48` → `48`, never `1E-07` or `30,2672`), since the server accepts only that form.
+- `SerpAsync` throws `ArgumentOutOfRangeException` before any request for `Pages` or `Radius` below 1 and for a NaN or infinite `Lat`/`Lon`. Upper bounds and which location options can be combined stay server-side checks (a 400, not billed).
+- `SerpResult` gains `SearchParameters.Pages`, `LocationRequested`, `LocationUsed`, `Lat`, `Lon` and `Radius`, `SerpOrganicResult.Page` and `Pagination.PagesReturned`, all nullable. With `Pages` above 1, `Position` counts through the combined list.
+- `SerpLocationsAsync(SerpLocationsRequest?)` for the new `GET /serp/locations` endpoint (free, no API key needed on the server). `SerpLocationsRequest` takes `Q` and `Limit` (`Limit` below 1 throws `ArgumentOutOfRangeException`). Returns `IReadOnlyList<SerpLocation>` with `Id` (string), `GoogleId`, `GoogleParentId` (nullable) and `Reach` as `long`, `Name`, `CanonicalName`, `CountryCode`, `TargetType` (a plain string) and `Gps` (`[longitude, latitude]`). Pass `CanonicalName` or `Id` as `SerpRequest.Location`.
+- The smoke sample (`samples/Smoke`) adds a two-page `Location = "Austin, TX"` search, asserting `location_used` contains `Austin`, and a `SerpLocationsAsync` lookup for `austin`.
+
 ### Changed
 
 - Docs: stop stating credit prices (they're set server-side and change); link to https://webscraping.ai/docs pricing instead.

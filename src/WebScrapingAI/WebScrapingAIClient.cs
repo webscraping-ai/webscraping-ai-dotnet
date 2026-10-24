@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -158,7 +159,7 @@ public sealed class WebScrapingAIClient : IDisposable
 
     // ---------- /serp ----------
     /// <summary>
-    /// Search engine results for a query. Priced per search (see
+    /// Search engine results for a query. Billed per results page returned (see
     /// https://webscraping.ai/docs#serp); failed searches are not charged.
     /// </summary>
     public async Task<SerpResult> SerpAsync(SerpRequest request, CancellationToken cancellationToken = default)
@@ -170,6 +171,13 @@ public sealed class WebScrapingAIClient : IDisposable
         // The server also rejects invalid pages with a 400 (not billed); checking here saves the round trip.
         if (request.Page.HasValue && request.Page.Value < 1)
             throw new ArgumentOutOfRangeException(nameof(request.Page), request.Page.Value, $"{nameof(request.Page)} must be >= 1");
+        // Upper bounds and which location options combine are the server's to check (free 400).
+        if (request.Pages.HasValue && request.Pages.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(request.Pages), request.Pages.Value, $"{nameof(request.Pages)} must be >= 1");
+        if (request.Radius.HasValue && request.Radius.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(request.Radius), request.Radius.Value, $"{nameof(request.Radius)} must be >= 1");
+        RequireFinite(request.Lat, nameof(request.Lat));
+        RequireFinite(request.Lon, nameof(request.Lon));
         // Query-shaped endpoint: none of the CommonParams scraping options apply.
         var q = new QueryEncoder()
             .Set("q", request.Q);
@@ -177,9 +185,36 @@ public sealed class WebScrapingAIClient : IDisposable
         if (!string.IsNullOrEmpty(request.Gl)) q.Set("gl", request.Gl);
         if (!string.IsNullOrEmpty(request.Hl)) q.Set("hl", request.Hl);
         if (request.Page.HasValue) q.Set("page", request.Page.Value);
+        if (request.Pages.HasValue) q.Set("pages", request.Pages.Value);
+        if (!string.IsNullOrEmpty(request.Location)) q.Set("location", request.Location);
+        if (!string.IsNullOrEmpty(request.Uule)) q.Set("uule", request.Uule);
+        if (request.Lat.HasValue) q.Set("lat", FormatCoordinate(request.Lat.Value));
+        if (request.Lon.HasValue) q.Set("lon", FormatCoordinate(request.Lon.Value));
+        if (request.Radius.HasValue) q.Set("radius", request.Radius.Value);
 
         var body = await RequestStringAsync("/serp", q, cancellationToken).ConfigureAwait(false);
         return Json.Read<SerpResult>(body);
+    }
+
+    // ---------- /serp/locations ----------
+    /// <summary>
+    /// Looks up names for <see cref="SerpRequest.Location"/>: up to 10 matching locations, most
+    /// populous first. Pass a result's <see cref="SerpLocation.CanonicalName"/> (or
+    /// <see cref="SerpLocation.Id"/>) as the location. Matches English names. Free, and needs no API key
+    /// on the server (the client sends its key as usual).
+    /// </summary>
+    public async Task<IReadOnlyList<SerpLocation>> SerpLocationsAsync(SerpLocationsRequest? request = null, CancellationToken cancellationToken = default)
+    {
+        request ??= new SerpLocationsRequest();
+        // The server rejects a limit above 10 with a 400.
+        if (request.Limit.HasValue && request.Limit.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(request.Limit), request.Limit.Value, $"{nameof(request.Limit)} must be >= 1");
+        var q = new QueryEncoder();
+        if (!string.IsNullOrEmpty(request.Q)) q.Set("q", request.Q);
+        if (request.Limit.HasValue) q.Set("limit", request.Limit.Value);
+
+        var body = await RequestStringAsync("/serp/locations", q, cancellationToken).ConfigureAwait(false);
+        return Json.Read<List<SerpLocation>>(body);
     }
 
     // ---------- /data ----------
@@ -369,6 +404,24 @@ public sealed class WebScrapingAIClient : IDisposable
         if (c.ErrorOnRedirect.HasValue) q.Set("error_on_redirect", c.ErrorOnRedirect.Value);
         if (!string.IsNullOrEmpty(c.JsScript)) q.Set("js_script", c.JsScript);
         return q;
+    }
+
+    private static void RequireFinite(double? value, string name)
+    {
+        if (value.HasValue && (double.IsNaN(value.Value) || double.IsInfinity(value.Value)))
+            throw new ArgumentOutOfRangeException(name, value.Value, $"{name} must be a finite number");
+    }
+
+    /// <summary>
+    /// Formats a coordinate as a plain decimal with at most 7 fractional digits, culture-invariantly.
+    /// The server accepts only <c>^-?\d+(\.\d+)?$</c>, which the default double formatting breaks
+    /// (<c>1E-07</c>, or <c>30,2672</c> under a comma-decimal culture).
+    /// </summary>
+    internal static string FormatCoordinate(double value)
+    {
+        var formatted = Math.Round(value, 7).ToString("0.#######", CultureInfo.InvariantCulture);
+        // Tiny negatives round to "-0".
+        return formatted == "-0" ? "0" : formatted;
     }
 
     private static void Require(string value, string name)
