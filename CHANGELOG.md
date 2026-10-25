@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file. The format 
 ## [4.2.0] — 2026-09-25
 ### Added
 
-- `DataAsync(DataRequest)` for the new `GET /data` endpoint. It returns structured JSON for a page on a supported site, e.g. YouTube, TikTok, X, LinkedIn, Instagram or Reddit. `DataRequest` takes `Url` (required), `Country`, `Transcript` and `TranscriptLanguage`, plus `ExtraParams` for provider-specific options sent as-is. Like `SerpRequest`, it doesn't extend `CommonRequest`. The result is a `DataResult` with `RequestParameters` (`Url`, `Provider`, `Type`), `ParseStatus` and an untyped `Data` (`JsonElement?`, null on `parse_failed`/`not_found`). `Provider`, `Type` and `ParseStatus` are plain strings. Each request costs 15 credits.
+- `DataAsync(DataRequest)` for the new `GET /data` endpoint. It returns structured JSON for a page on a supported site, e.g. YouTube, TikTok, X, LinkedIn, Instagram or Reddit. `DataRequest` takes `Url` (required), `Country`, `Transcript` and `TranscriptLanguage`, plus `ExtraParams` for provider-specific options sent as-is. Like `SerpRequest`, it doesn't extend `CommonRequest`. The result is a `DataResult` with `RequestParameters` (`Url`, `Provider`, `Type`), `ParseStatus` and an untyped `Data` (`JsonElement?`, null on `parse_failed`/`not_found`). `Provider`, `Type` and `ParseStatus` are plain strings. Priced per site (see https://webscraping.ai/docs#data).
 - `DataAsync` checks only that `Url` isn't blank. It never checks the URL against a site list: sites are added on the server, and an unsupported URL or page type returns a 400 (`BadRequestException`) that is not charged. Its message lists what is supported. An `ExtraParams` key that belongs to a dedicated option (`api_key`, `url`, `country`, `transcript`, `transcript_language`) throws `ArgumentException`, whether or not that option is set. `ExtraParams` entries with a null or empty value are dropped.
 - The smoke sample (`samples/Smoke`) now also checks `/data`. It asserts a YouTube video returns `parse_status` `ok`, provider `youtube` and a non-empty `title`, and that the server rejects `https://example.com/` with a 400 whose message contains `Unsupported URL`.
 
@@ -29,12 +29,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
-- `SerpAsync(SerpRequest)` for the new `GET /serp` endpoint — parsed search engine (Google) results for a query. `SerpRequest` takes `Q` (required), `Engine`, `Gl`, `Hl` and `Page`; it does not extend `CommonRequest` since the page-scraping options don't apply. Returns a typed `SerpResult` (`SearchParameters`, `SearchInformation`, `OrganicResults`, `RelatedSearches`, `Pagination`), with optional fields nullable. Flat 15 credits per search.
+- `SerpAsync(SerpRequest)` for the new `GET /serp` endpoint — parsed search engine (Google) results for a query. `SerpRequest` takes `Q` (required), `Engine`, `Gl`, `Hl` and `Page`; it does not extend `CommonRequest` since the page-scraping options don't apply. Returns a typed `SerpResult` (`SearchParameters`, `SearchInformation`, `OrganicResults`, `RelatedSearches`, `Pagination`), with optional fields nullable. Priced per search (see https://webscraping.ai/docs#serp).
 - `SerpAsync` validates input before any request: a null, empty or whitespace-only `Q` throws `ArgumentException` (`Q` is otherwise sent untrimmed), and `Page < 1` throws `ArgumentOutOfRangeException` — the server also rejects it with a 400 (not billed), so checking client-side saves the round trip. Pages are 1–100: the server rejects a `Page` above 100 with a 400.
 
 ### Fixed
 
-- Smoke sample (`samples/Smoke`) now asserts on results instead of only catching exceptions: SERP requires non-empty `organic_results` and `search_parameters.q == "coffee machines"`, `selected_multiple` requires at least one non-empty group, text endpoints fail on empty output and `fields` fails without a `result`. Page tools run with `js=false` and `proxy=datacenter` so the documented ~31-credit cost holds, and FAIL lines redact the API key.
+- Smoke sample (`samples/Smoke`) now asserts on results instead of only catching exceptions: SERP requires non-empty `organic_results` and `search_parameters.q == "coffee machines"`, `selected_multiple` requires at least one non-empty group, text endpoints fail on empty output and `fields` fails without a `result`. Page tools run with `js=false` and `proxy=datacenter` to keep the sweep cheap, and FAIL lines redact the API key.
 
 ## [4.0.2] — 2026-07-17
 
