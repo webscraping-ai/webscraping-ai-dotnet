@@ -228,21 +228,27 @@ public sealed class WebScrapingAIClient : IDisposable
     };
 
     /// <summary>
-    /// Structured JSON for a page on a supported site (e.g. a YouTube video, TikTok
-    /// profile, X post, LinkedIn company, Instagram reel or Reddit thread). Priced
-    /// per site (see https://webscraping.ai/docs#data), including
-    /// <c>parse_failed</c>/<c>not_found</c> results; unsupported URLs and failed
-    /// fetches are not charged.
+    /// Structured JSON for any public web page. Some popular sites have dedicated
+    /// parsers with fixed fields. For other sites, the first request for a new kind
+    /// of page also has an AI model learn the page's structure, so it can take up to
+    /// about 45 seconds (keep <see cref="WebScrapingAIClientOptions.Timeout"/> above
+    /// that). When learning takes longer, or another request is already learning that
+    /// site, the API returns HTTP 503 (<c>error_code</c> <c>structure_processing</c>,
+    /// not charged), thrown as an <see cref="ApiException"/> with <c>Status</c> 503 (the
+    /// JSON, including <c>retry_after</c>, is in <c>ResponseBody</c>); retry after
+    /// <c>retry_after</c> seconds, which can return data. If no structured data can be found on the page, the API
+    /// returns 422 (<c>structure_unavailable</c>, not charged), thrown as an
+    /// <see cref="ApiException"/> with <c>Status</c> 422; use <see cref="FieldsAsync"/>
+    /// instead. Pricing: see https://webscraping.ai/docs#data.
     /// <para>
-    /// The URL is never checked against a site list here: supported sites are added
-    /// on the server, which rejects an unsupported URL with a 400
-    /// (<see cref="BadRequestException"/>, not charged).
+    /// The URL is never checked against a site list here: the server works out the
+    /// site and the kind of page.
     /// </para>
     /// </summary>
     public async Task<DataResult> DataAsync(DataRequest request, CancellationToken cancellationToken = default)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
-        // Only a non-blank check: the server's free 400 is the source of truth for "unsupported".
+        // Only a non-blank check: the server is the source of truth for what it can parse.
         if (string.IsNullOrWhiteSpace(request.Url))
             throw new ArgumentException($"{nameof(request.Url)} is required and must not be blank", nameof(request.Url));
         if (request.ExtraParams is not null)

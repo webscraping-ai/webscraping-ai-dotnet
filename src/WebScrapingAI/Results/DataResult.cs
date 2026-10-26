@@ -6,8 +6,7 @@ namespace WebScrapingAI;
 /// <summary>
 /// Response from <c>GET /data</c>. <see cref="Data"/> is untyped JSON because its
 /// shape depends on <see cref="DataRequestParameters.Provider"/> and
-/// <see cref="DataRequestParameters.Type"/>, and new providers are added on the
-/// server. <c>Provider</c>, <c>Type</c> and <see cref="ParseStatus"/> are plain
+/// <see cref="DataRequestParameters.Type"/>, and both are open sets. <c>Provider</c>, <c>Type</c> and <see cref="ParseStatus"/> are plain
 /// strings so values this SDK version doesn't know about still round-trip.
 /// </summary>
 public sealed class DataResult
@@ -50,11 +49,11 @@ public sealed class DataRequestParameters
     [JsonPropertyName("url")]
     public string Url { get; init; } = string.Empty;
 
-    /// <summary>Detected site, e.g. <c>youtube</c>. Plain string; unknown values round-trip.</summary>
+    /// <summary>The site the page belongs to, e.g. <c>toscrape.com</c>. Plain string; unknown values round-trip.</summary>
     [JsonPropertyName("provider")]
     public string Provider { get; init; } = string.Empty;
 
-    /// <summary>Detected page kind, e.g. <c>video</c>. Plain string; unknown values round-trip.</summary>
+    /// <summary>The kind of page, e.g. <c>product</c>. Plain string; unknown values round-trip.</summary>
     [JsonPropertyName("type")]
     public string Type { get; init; } = string.Empty;
 }

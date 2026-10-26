@@ -9,11 +9,11 @@ using WebScrapingAI;
 namespace WebScrapingAI.Samples.Smoke;
 
 /// <summary>
-/// Hits the live WebScraping.AI API across all 10 endpoints. Page tools run with
-/// js=false and proxy=datacenter, so a run costs ~76 credits: 4 page calls x 1
-/// (html, text, selected, selected_multiple) + question/fields 2 x 6 + serp 15
-/// + serp_location (2 pages) 30 + data 15 (serp_locations is free and the
-/// data_unsupported check is a free server-side 400).
+/// Hits the live WebScraping.AI API across all 10 endpoints and uses real credits
+/// (see https://webscraping.ai/docs for pricing). Page tools run with js=false and
+/// proxy=datacenter to keep the cost down; serp_location (2 pages) is billed per
+/// page returned, serp_locations is free, and the data_any_site check isn't charged
+/// when it returns a 503, 422 or a 500 timeout.
 /// Each step asserts on the result shape, not just the absence of exceptions.
 /// Run with: WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
 /// </summary>
@@ -24,7 +24,7 @@ internal static class Program
     private const string SerpLocation = "Austin, TX";
     private const string DatacenterProxy = "datacenter";
     private const string DataUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-    private const string UnsupportedDataUrl = "https://example.com/";
+    private const string AnySiteDataUrl = "https://example.com/";
 
     private static string? _apiKey;
 
@@ -153,26 +153,52 @@ internal static class Program
             return $"provider={result.RequestParameters.Provider} type={result.RequestParameters.Type} title={Preview(RequireNonEmpty(title, "data.title"))}";
         });
 
-        failed += await Step("data_unsupported", async () =>
+        failed += await Step("data_any_site", async () =>
         {
-            // No client-side site filter: the server must be the one rejecting this (free 400).
+            // /data accepts any public page: a success envelope, a 503 when learning the page's
+            // structure outlasts the request, a 422 when there is no structured data, or a 500
+            // timeout when extracting the data or loading the page runs out of time are all fine.
+            DataResult result;
             try
             {
-                await client.DataAsync(new DataRequest { Url = UnsupportedDataUrl });
+                result = await client.DataAsync(new DataRequest { Url = AnySiteDataUrl });
             }
-            catch (BadRequestException ex)
+            catch (ApiException ex) when (ex.Status == 503 || ex.Status == 422 || ex.Status == 500)
             {
-                // The server's message proves the rejection didn't come from the client.
-                if (!ex.Message.Contains("Unsupported URL"))
-                    throw new SmokeAssertionException($"400 message lacks 'Unsupported URL': {Preview(ex.Message)}");
-                return $"server 400: {Preview(ex.Message)}";
+                var expected = ex.Status == 503 ? "structure_processing" : ex.Status == 422 ? "structure_unavailable" : "timeout";
+                var code = ErrorCode(ex.ResponseBody);
+                if (code != expected)
+                    throw new SmokeAssertionException($"{ex.Status} error_code was '{code}', expected '{expected}'");
+                return $"{ex.Status} {expected}";
             }
-            throw new SmokeAssertionException($"expected a 400 BadRequestException for {UnsupportedDataUrl}");
+            if (result.RequestParameters.Url.Length == 0)
+                throw new SmokeAssertionException("success envelope lacks request_parameters");
+            return $"provider={result.RequestParameters.Provider} type={result.RequestParameters.Type} parse_status={result.ParseStatus}";
         });
 
         Console.WriteLine();
         Console.WriteLine(failed == 0 ? "All 10 endpoints OK." : $"{failed} endpoint(s) failed.");
         return failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>Reads <c>error_code</c> from a JSON error body, or null.</summary>
+    private static string? ErrorCode(string? body)
+    {
+        if (string.IsNullOrEmpty(body))
+            return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("error_code", out var code)
+                && code.ValueKind == JsonValueKind.String
+                ? code.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Returns 0 on success, 1 on failure — caller sums into the failure count.</summary>

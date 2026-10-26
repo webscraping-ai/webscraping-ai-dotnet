@@ -168,54 +168,56 @@ await client.SerpAsync(new SerpRequest { Q = "coffee machines", Location = austi
 (`GoogleParentId` is null for countries), and `TargetType` is a plain string
 (e.g. `City`, `State`, `Country`).
 
-### Structured data for supported sites
+### Structured data for any web page
 
-`DataAsync` returns structured JSON for a public page on a supported site. Pass
-the page's normal URL, for example a YouTube video, a TikTok profile, an X
-post, a LinkedIn company, an Instagram reel or a Reddit thread. The server
-detects the site (`Provider`) and page kind (`Type`) from the URL. **More sites
-are added on the server over time, and the SDK doesn't check URLs itself**, so
-new sites work without an SDK upgrade. An unsupported URL or page type returns a
-400 (`BadRequestException`) that is not charged. Its message lists what is
-supported. `DataRequest` takes:
+`DataAsync` returns structured JSON for any public web page. Pass the page's
+normal URL; the server works out the site the page belongs to (`Provider`, e.g.
+`toscrape.com`) and the kind of page (`Type`, e.g. `product`). Some popular
+sites have dedicated parsers with fixed fields. For other sites, an AI model
+learns the structure of each new kind of page once, and from then on pages of
+that kind return data straight away for every user. **The SDK doesn't check
+URLs itself**, so this works without an SDK upgrade. `DataRequest` takes:
 
 - `Url` (required; a blank `Url` throws `ArgumentException`). Sent as-is.
 - `Country`: two-letter country code of the proxy used to fetch the page, `us`
   by default.
-- `Transcript`: YouTube videos only. Also fetch the video's transcript into
-  `data.transcript`. It's null when no matching captions are available. If the
-  transcript fetch itself fails, the whole request fails with a 500 and is not
-  charged.
-- `TranscriptLanguage`: caption language to pick, e.g. `en` or `de`. Without
-  it, English is preferred, then the first available track. If the video has no
-  captions in that language, `data.transcript` is null.
+- `Transcript`: video pages on sites with a dedicated parser only. Also fetch
+  the video's transcript into `data.transcript`. It's null when no matching
+  captions are available. If the transcript fetch itself fails, the whole
+  request fails with a 500 and is not charged.
+- `TranscriptLanguage`: with `Transcript = true`. Caption language to pick,
+  e.g. `en` or `de`. Without it, English is preferred, then the first available
+  track. If the video has no captions in that language, `data.transcript` is
+  null.
 
-The page-scraping options (`Js`, `Proxy`, `Headers`, …) don't apply. Priced
-per site (see [pricing](https://webscraping.ai/docs#data)), including results
-that come back `parse_failed` or `not_found`; unsupported URLs and failed
-fetches aren't charged.
+`DataRequest` has no typed page-scraping options (`Headers`, `Timeout`, …).
+There are no `js` or `proxy` options: `/data` renders pages with JavaScript
+where the site needs it and always uses `proxy=auto`.
+Priced per request, including results that come back `parse_failed` or
+`not_found`. Failed fetches aren't charged. See
+[pricing](https://webscraping.ai/docs#data).
 
 ```csharp
 DataResult result = await client.DataAsync(new DataRequest
 {
-    Url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    Transcript = true,
+    Url = "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
 });
 
-Console.WriteLine($"{result.RequestParameters.Provider}/{result.RequestParameters.Type}"); // youtube/video
+Console.WriteLine($"{result.RequestParameters.Provider}/{result.RequestParameters.Type}"); // toscrape.com/product
 Console.WriteLine(result.ParseStatus);                                                      // ok, parse_failed or not_found
 if (result.Data is { } data)                                                                // System.Text.Json.JsonElement
 {
-    Console.WriteLine(data.GetProperty("title").GetString());
+    Console.WriteLine(data.GetProperty("title").GetString());               // A Light in the Attic
+    Console.WriteLine(data.GetProperty("price").GetDecimal());              // 51.77
 }
 ```
 
-`Data` is an untyped `JsonElement?` because its shape depends on the provider
-and page type. Fields are snake_case, and fields a page doesn't expose are
+`Data` is an untyped `JsonElement?` because its shape depends on the site and
+the kind of page. Fields are snake_case, and fields a page doesn't expose are
 null. `Data` itself is null when the API returns `null`, for example on
 `parse_failed`. `Provider`, `Type` and `ParseStatus` are plain strings, so
-values added later still come through. For provider-specific options the SDK
-doesn't model yet, use `ExtraParams`. Its entries are sent as-is, and entries
+values added later still come through. For options the SDK doesn't model yet,
+use `ExtraParams`. Its entries are sent as-is, and entries
 with a null or empty value are dropped. A key that belongs to a dedicated option
 throws `ArgumentException`, whether or not that option is set: `api_key`, `url`,
 `country`, `transcript` or `transcript_language`.
@@ -223,10 +225,51 @@ throws `ArgumentException`, whether or not that option is set: `api_key`, `url`,
 ```csharp
 await client.DataAsync(new DataRequest
 {
-    Url = "https://www.example-new-site.com/p/123",
+    Url = "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
     ExtraParams = new Dictionary<string, string> { ["some_option"] = "value" },
 });
 ```
+
+#### Structure learning (503) and no structured data (422)
+
+On a site without a dedicated parser, the first request for a new kind of page
+also learns the page's structure, so it can take up to about 45 seconds; keep
+`WebScrapingAIClientOptions.Timeout` (60 seconds by default) above that. When
+learning takes longer, or another request is already learning that site, the API
+returns HTTP **503** with a body like
+`{"message": "...", "error_code": "structure_processing", "retry_after": 30}`
+(and a `Retry-After` header). It isn't charged. It's thrown as the base
+`ApiException` with `Status == 503` (the API's message is in `Message`, the raw
+JSON, including `error_code` and `retry_after`, in `ResponseBody`). Retry after
+`retry_after` seconds; the retry can return data (if learning failed
+meanwhile, it may learn again or return the 422 below):
+
+```csharp
+var request = new DataRequest { Url = url };
+DataResult result;
+try
+{
+    result = await client.DataAsync(request);
+}
+catch (ApiException ex) when (ex.Status == 503) // structure_processing
+{
+    using var body = JsonDocument.Parse(ex.ResponseBody!);
+    await Task.Delay(TimeSpan.FromSeconds(body.RootElement.GetProperty("retry_after").GetInt32()));
+    result = await client.DataAsync(request);
+}
+```
+
+If no structured data can be found on the page (an empty page, a login wall),
+the API returns HTTP **422** with `error_code` `structure_unavailable`, not
+charged. It's thrown as the base `ApiException` with `Status == 422` (the API's
+message is in `Message`, the raw JSON in `ResponseBody`). Use `FieldsAsync` to
+name the values you want instead.
+
+Redirects within the same site (http→https, `www`, trailing slash) are
+followed; a redirect to another site throws a `ServerException` (HTTP 500,
+`error_code` `target_redirect`, the target in the message), not charged.
+Starting too many new kinds of pages in an hour throws a `RateLimitException`
+(HTTP 429, `error_code` `rate_limited`).
 
 ## API
 
@@ -261,7 +304,7 @@ The SDK throws unchecked exceptions:
 | `RateLimitException` | HTTP 429 |
 | `ServerException` | HTTP 500 |
 | `GatewayTimeoutException` | HTTP 504 |
-| `ApiException` (base) | Any other non-2xx |
+| `ApiException` (base) | Any other non-2xx (e.g. 503 `structure_processing` or 422 `structure_unavailable` from `DataAsync`) |
 | `ApiTimeoutException` | Per-request timeout exceeded |
 | `ApiConnectionException` | Transport/connection failure |
 
@@ -313,7 +356,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 10 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, a two-page `Austin, TX` search whose `location_used` contains `Austin`, a location lookup whose first `canonical_name` contains `Austin`, at least one selector match, a YouTube `/data` result with `parse_status` `ok` and a title, and a server-side 400 for an unsupported `/data` URL). Page tools run with `Js = false` and `Proxy = "datacenter"` to keep a run cheap. It makes 4 page calls, a question and a fields call, two SERP searches (one of them two pages, billed per page returned) and one `/data` call; the location lookup and the unsupported-URL check are free. It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
+The `samples/Smoke` console app exercises all 10 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, a two-page `Austin, TX` search whose `location_used` contains `Austin`, a location lookup whose first `canonical_name` contains `Austin`, at least one selector match, a `/data` result for a page on a site with a dedicated parser with `parse_status` `ok` and a title, and a `/data` call on `https://example.com/` that must return a success envelope, a 503 `structure_processing` or a 422 `structure_unavailable`). Page tools run with `Js = false` and `Proxy = "datacenter"` to keep the cost down, but a run uses real credits (see [pricing](https://webscraping.ai/docs); the two-page search is billed per page returned, the location lookup is free, and the any-site check isn't charged when it returns a 503 or 422). It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke
