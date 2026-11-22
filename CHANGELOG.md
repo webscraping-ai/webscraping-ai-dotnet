@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- Docs: `CommonRequest.Timeout` max is 25000 ms (larger values are capped), not 30000. `CommonRequest.Proxy` also accepts `auto` (tries datacenter, then residential, then stealth in one request; bills only the tier that worked; not with `CustomProxy`).
+- Docs: `SelectedRequest.Selector` — a missing selector, or one that matches nothing, gets a 400 "Element not found"; the API never returns the whole page.
+- Docs: `DataRequest.Country` has no fixed `us` default. Without it, a page on a country site with a dedicated parser (e.g. uk.indeed.com) uses that site's country; everything else uses `us`.
+- Docs: `/ai/fields`' `result` wrapper is no longer described as drift; values are strings or null. The `/data` example now shows type `book`. `/data` can throw retryable 500s with `error_code` `timeout` or `ai_unavailable`, and `QuestionAsync`/`FieldsAsync` a 500 `ai_unavailable` (not charged). README: `WebScrapingAIException` extends `System.Exception`; the API reference link points to https://webscraping.ai/docs.
+- `samples/Smoke` accepts a 500 `ai_unavailable` from `/data` on a page without a dedicated parser.
 
 ## [4.3.0] — 2026-10-24
 ### Added

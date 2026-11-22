@@ -24,7 +24,11 @@ public sealed class DataRequest
     /// </summary>
     public string Url { get; init; } = string.Empty;
 
-    /// <summary>Two-letter country code of the proxy used to fetch the page, <c>us</c> by default.</summary>
+    /// <summary>
+    /// Two-letter country code of the proxy used to fetch the page. Without it, a page on a country site with a
+    /// dedicated parser (e.g. <c>uk.indeed.com</c>) uses that site's country; everything else uses <c>us</c>.
+    /// Some dedicated parsers use a fixed route and ignore it.
+    /// </summary>
     public string? Country { get; init; }
 
     /// <summary>

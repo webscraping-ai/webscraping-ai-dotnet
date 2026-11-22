@@ -172,15 +172,17 @@ await client.SerpAsync(new SerpRequest { Q = "coffee machines", Location = austi
 
 `DataAsync` returns structured JSON for any public web page. Pass the page's
 normal URL; the server works out the site the page belongs to (`Provider`, e.g.
-`toscrape.com`) and the kind of page (`Type`, e.g. `product`). Some popular
+`toscrape.com`) and the kind of page (`Type`, e.g. `book`). Some popular
 sites have dedicated parsers with fixed fields. For other sites, an AI model
 learns the structure of each new kind of page once, and from then on pages of
 that kind return data straight away for every user. **The SDK doesn't check
 URLs itself**, so this works without an SDK upgrade. `DataRequest` takes:
 
 - `Url` (required; a blank `Url` throws `ArgumentException`). Sent as-is.
-- `Country`: two-letter country code of the proxy used to fetch the page, `us`
-  by default.
+- `Country`: two-letter country code of the proxy used to fetch the page.
+  Without it, a page on a country site with a dedicated parser (e.g.
+  `uk.indeed.com`) uses that site's country; everything else uses `us`. Some
+  dedicated parsers use a fixed route and ignore it.
 - `Transcript`: video pages on sites with a dedicated parser only. Also fetch
   the video's transcript into `data.transcript`. It's null when no matching
   captions are available. If the transcript fetch itself fails, the whole
@@ -203,7 +205,7 @@ DataResult result = await client.DataAsync(new DataRequest
     Url = "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
 });
 
-Console.WriteLine($"{result.RequestParameters.Provider}/{result.RequestParameters.Type}"); // toscrape.com/product
+Console.WriteLine($"{result.RequestParameters.Provider}/{result.RequestParameters.Type}"); // toscrape.com/book
 Console.WriteLine(result.ParseStatus);                                                      // ok, parse_failed or not_found
 if (result.Data is { } data)                                                                // System.Text.Json.JsonElement
 {
@@ -269,7 +271,10 @@ Redirects within the same site (http→https, `www`, trailing slash) are
 followed; a redirect to another site throws a `ServerException` (HTTP 500,
 `error_code` `target_redirect`, the target in the message), not charged.
 Starting too many new kinds of pages in an hour throws a `RateLimitException`
-(HTTP 429, `error_code` `rate_limited`).
+(HTTP 429, `error_code` `rate_limited`). Two retryable `ServerException`s (HTTP
+500, not charged) can also come back: `error_code` `timeout` (loading the page
+or extracting the data ran out of time) and `ai_unavailable` (the AI model is
+busy). Try again.
 
 ## API
 
@@ -290,7 +295,7 @@ All methods are async and accept an optional `CancellationToken`.
 
 ### Common request options
 
-Every request type except `SerpRequest`, `SerpLocationsRequest` and `DataRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs/api) for the full list.
+Every request type except `SerpRequest`, `SerpLocationsRequest` and `DataRequest` extends `CommonRequest`, which exposes shared options like `Js`, `Country`, `Proxy`, `Timeout`, `WaitFor`, `Headers`, `Device`, `JsScript`, etc. See [the API reference](https://webscraping.ai/docs) for the full list.
 
 ### Errors
 
@@ -308,7 +313,7 @@ The SDK throws unchecked exceptions:
 | `ApiTimeoutException` | Per-request timeout exceeded |
 | `ApiConnectionException` | Transport/connection failure |
 
-All of the above extend `WebScrapingAIException` (a `RuntimeException`). The transport-level pair (`ApiTimeoutException`, `ApiConnectionException`) do **not** extend `ApiException`, so `catch (ApiException)` reliably means "we got an HTTP response back".
+All of the above extend `WebScrapingAIException` (which extends `System.Exception`). The transport-level pair (`ApiTimeoutException`, `ApiConnectionException`) do **not** extend `ApiException`, so `catch (ApiException)` reliably means "we got an HTTP response back".
 
 ```csharp
 try
@@ -331,10 +336,10 @@ catch (WebScrapingAIException ex)
 
 ### Response-shape notes
 
-Two endpoints return shapes that differ slightly from the OpenAPI spec examples; the SDK preserves them verbatim so the wire layout stays observable:
+- **`FieldsAsync`** returns `FieldsResult` whose `.Result` holds the extracted fields under the API's `result` key; every value is a string or null.
+- **`SelectedMultipleAsync`** returns `SelectedMultipleResult` whose `.Results` is `IReadOnlyList<IReadOnlyList<string>>` (the API wraps matches in an outer array). This shape differs slightly from the OpenAPI spec examples; the SDK preserves it verbatim so the wire layout stays observable.
 
-- **`FieldsAsync`** returns `FieldsResult` whose `.Result` holds the extracted fields under the API's `result` key.
-- **`SelectedMultipleAsync`** returns `SelectedMultipleResult` whose `.Results` is `IReadOnlyList<IReadOnlyList<string>>` (the API wraps matches in an outer array).
+`QuestionAsync` and `FieldsAsync` can also throw a `ServerException` (HTTP 500) with `error_code` `ai_unavailable` in `ResponseBody` when the AI model is busy. It isn't charged; try again.
 
 ## Configuration
 
@@ -356,7 +361,7 @@ new WebScrapingAIClientOptions
 
 ## Smoke test
 
-The `samples/Smoke` console app exercises all 10 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, a two-page `Austin, TX` search whose `location_used` contains `Austin`, a location lookup whose first `canonical_name` contains `Austin`, at least one selector match, a `/data` result for a page on a site with a dedicated parser with `parse_status` `ok` and a title, and a `/data` call on `https://example.com/` that must return a success envelope, a 503 `structure_processing` or a 422 `structure_unavailable`). Page tools run with `Js = false` and `Proxy = "datacenter"` to keep the cost down, but a run uses real credits (see [pricing](https://webscraping.ai/docs); the two-page search is billed per page returned, the location lookup is free, and the any-site check isn't charged when it returns a 503 or 422). It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
+The `samples/Smoke` console app exercises all 10 endpoints against the live API and asserts on each result (e.g. non-empty organic results with the expected query, a two-page `Austin, TX` search whose `location_used` contains `Austin`, a location lookup whose first `canonical_name` contains `Austin`, at least one selector match, a `/data` result for a page on a site with a dedicated parser with `parse_status` `ok` and a title, and a `/data` call on `https://example.com/` that must return a success envelope, a 503 `structure_processing`, a 422 `structure_unavailable` or a 500 `timeout` or `ai_unavailable`). Page tools run with `Js = false` and `Proxy = "datacenter"` to keep the cost down, but a run uses real credits (see [pricing](https://webscraping.ai/docs); the two-page search is billed per page returned, the location lookup is free, and the any-site check isn't charged when it returns an error). It prints a `FAIL` line per failing step (with the API key redacted) and exits non-zero if any step failed.
 
 ```sh
 WEBSCRAPING_AI_API_KEY=... dotnet run --project samples/Smoke

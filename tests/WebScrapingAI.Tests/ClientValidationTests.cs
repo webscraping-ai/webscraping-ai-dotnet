@@ -27,7 +27,7 @@ public class ClientValidationTests
     [Fact]
     public async Task SelectedAsync_allows_missing_selector()
     {
-        // selector is optional per the API: omitting it returns whole-page HTML.
+        // selector isn't checked client-side (the API answers a missing one with a 400 "Element not found").
         var handler = StubHandler.Returning(System.Net.HttpStatusCode.OK, "<h1>x</h1>");
         var client = new WebScrapingAIClient(new WebScrapingAIClientOptions { ApiKey = "k", HttpHandler = handler });
         await client.SelectedAsync(new SelectedRequest { Url = "https://example.com" });
