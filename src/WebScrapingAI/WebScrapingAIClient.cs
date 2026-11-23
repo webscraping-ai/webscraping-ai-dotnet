@@ -102,7 +102,7 @@ public sealed class WebScrapingAIClient : IDisposable
         Require(request.Url, nameof(request.Url));
         var q = CommonParams(request)
             .Set("url", request.Url);
-        // selector is optional per the API: omitting it returns whole-page HTML.
+        // selector isn't checked client-side; the API answers a missing one with a 400 "Element not found".
         if (!string.IsNullOrEmpty(request.Selector)) q.Set("selector", request.Selector);
         if (!string.IsNullOrEmpty(request.Format)) q.Set("format", request.Format);
         return RequestStringAsync("/selected", q, cancellationToken);

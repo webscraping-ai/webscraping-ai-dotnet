@@ -157,7 +157,8 @@ internal static class Program
         {
             // /data accepts any public page: a success envelope, a 503 when learning the page's
             // structure outlasts the request, a 422 when there is no structured data, or a 500
-            // timeout when extracting the data or loading the page runs out of time are all fine.
+            // timeout (extracting the data or loading the page ran out of time) or ai_unavailable
+            // (the AI model is busy) are all fine.
             DataResult result;
             try
             {
@@ -165,11 +166,13 @@ internal static class Program
             }
             catch (ApiException ex) when (ex.Status == 503 || ex.Status == 422 || ex.Status == 500)
             {
-                var expected = ex.Status == 503 ? "structure_processing" : ex.Status == 422 ? "structure_unavailable" : "timeout";
+                var expected = ex.Status == 503 ? new[] { "structure_processing" }
+                    : ex.Status == 422 ? new[] { "structure_unavailable" }
+                    : new[] { "timeout", "ai_unavailable" };
                 var code = ErrorCode(ex.ResponseBody);
-                if (code != expected)
-                    throw new SmokeAssertionException($"{ex.Status} error_code was '{code}', expected '{expected}'");
-                return $"{ex.Status} {expected}";
+                if (code is null || Array.IndexOf(expected, code) < 0)
+                    throw new SmokeAssertionException($"{ex.Status} error_code was '{code}', expected '{string.Join("' or '", expected)}'");
+                return $"{ex.Status} {code}";
             }
             if (result.RequestParameters.Url.Length == 0)
                 throw new SmokeAssertionException("success envelope lacks request_parameters");

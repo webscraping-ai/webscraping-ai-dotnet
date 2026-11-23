@@ -13,7 +13,7 @@ public abstract class CommonRequest
     /// <summary>HTTP headers to pass to the target page.</summary>
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
 
-    /// <summary>Maximum web page retrieval time in ms (default 10000, max 30000).</summary>
+    /// <summary>Maximum web page retrieval time in ms (default 10000, max 25000; larger values are capped).</summary>
     public int? Timeout { get; init; }
 
     /// <summary>Execute on-page JavaScript using a headless browser (default true).</summary>
@@ -25,7 +25,11 @@ public abstract class CommonRequest
     /// <summary>CSS selector to wait for before returning the page content. Overrides JsTimeout.</summary>
     public string? WaitFor { get; init; }
 
-    /// <summary>Proxy type: <c>datacenter</c>, <c>residential</c>, or <c>stealth</c>.</summary>
+    /// <summary>
+    /// Proxy type: <c>datacenter</c> (default), <c>residential</c>, <c>stealth</c>, or <c>auto</c>.
+    /// <c>auto</c> tries datacenter, then residential, then stealth in one request and bills only the
+    /// tier that worked; it can't be combined with <c>CustomProxy</c>.
+    /// </summary>
     public string? Proxy { get; init; }
 
     /// <summary>Country code (us, gb, de, …). Defaults to <c>us</c>.</summary>

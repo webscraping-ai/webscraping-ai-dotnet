@@ -53,7 +53,7 @@ public sealed class DataRequestParameters
     [JsonPropertyName("provider")]
     public string Provider { get; init; } = string.Empty;
 
-    /// <summary>The kind of page, e.g. <c>product</c>. Plain string; unknown values round-trip.</summary>
+    /// <summary>The kind of page, e.g. <c>book</c>. Plain string; unknown values round-trip.</summary>
     [JsonPropertyName("type")]
     public string Type { get; init; } = string.Empty;
 }
